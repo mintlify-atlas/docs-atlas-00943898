@@ -1,0 +1,68 @@
+---
+title: "Temporal Train/Prod Split: The 2010 Streaming Era Boundary"
+sidebarTitle: "Temporal Split"
+description: "Understand why the homework splits data at 2010, how the CD/iTunes era differs from the streaming era, and why this creates realistic data drift for detection."
+---
+
+One of the most important design decisions in this homework is that the dataset is split by **release year**, not randomly. Spotify launched in Sweden in 2008 and in the United States in 2011. By 2010 the streaming era was beginning to reshape how music was produced, mixed, and mastered — songwriters and producers started optimising for short attention spans, algorithmic playlists, and compressed audio formats. This means that tracks released before and after 2010 have measurably different audio feature distributions, making the year boundary an ideal and realistic source of data drift for you to detect.
+
+## The Split Logic
+
+The `process` stage reads `year_threshold` from `params.yaml` and uses it to partition `data/raw.csv` into two CSV files:
+
+- **`data/train.csv`** — tracks where `year <= 2010` (CD/iTunes era)
+- **`data/prod_sim.csv`** — tracks where `year > 2010` (streaming era)
+
+The skeleton in `src/process.py` already wires up the argument parsing and file paths. Your job is to implement the filtering and saving logic inside `process_data()`.
+
+```python
+# src/process.py  (simplified illustration)
+train_df = df[df["year"] <= year_threshold]
+prod_df  = df[df["year"] >  year_threshold]
+
+train_df.to_csv(train_output, index=False)
+prod_df.to_csv(prod_output,   index=False)
+```
+
+<Warning>
+  The boundary condition is **inclusive on the training side**: tracks from exactly 2010 go into `train.csv` (`<=`), and tracks from 2011 onwards go into `prod_sim.csv` (`>`). Do not use `< 2010` or `>= 2011` — off-by-one errors here shift thousands of tracks across the boundary and change the drift statistics the grader checks.
+</Warning>
+
+## Why Audio Features Drift
+
+The table below shows the direction and approximate magnitude of drift in several key features across the 2010 boundary. These are the signals your Kolmogorov–Smirnov tests are expected to flag.
+
+| Feature | Pre-2010 (CD/iTunes era) | Post-2010 (Streaming era) | Drift direction |
+|---|---|---|---|
+| `loudness` | Lower | Higher (+1.56 dB average) | Increases — loudness wars and heavy compression |
+| `acousticness` | Higher | Lower (−5.75%) | Decreases — more synthesised production |
+| `valence` | Higher | Lower (−6.5%) | Decreases — music became moodier |
+| `energy` | Lower | Higher (+4.3%) | Increases — more intense production |
+| `duration_ms` | Longer | Shorter (−8.4 s average) | Decreases — streaming optimisation |
+| `danceability` | Lower | Higher | Increases — algorithmic playlist compatibility |
+
+These shifts are statistically significant at the default `p < 0.05` threshold used in the drift monitoring script, meaning every feature in the table above should appear in the `drifted_features` list of your batch drift report.
+
+## Configuring the Threshold
+
+The year threshold is controlled by a single parameter in `data_pipeline/params.yaml`. DVC reads this value at pipeline execution time and passes it to `process.py` via a command-line argument — so changing the value and re-running `dvc repro` will automatically re-process the data.
+
+```yaml
+# data_pipeline/params.yaml
+data:
+  source_path: "songs.csv"
+  train_year_threshold: 2010  # Pre-2010 = training, Post-2010 = production simulation
+```
+
+<Info>
+  The grading rubric checks that `train_year_threshold` is set to exactly **2010** in `params.yaml`. Do not change this value. The DVC pipeline command for the `process` stage passes it as `--year_threshold ${data.train_year_threshold}`, so updating the YAML is all that is needed if you ever need to experiment.
+</Info>
+
+## Downstream Effects
+
+Understanding where each split file travels through the rest of the system helps you debug issues end-to-end:
+
+- `data/train.csv` → `src/train.py` (model training features and labels)
+- `data/train.csv` → `src/evaluate.py` (reference distribution for evaluation)
+- `data/train.csv` → `drift_monitoring/src/analyze_drift.py` (reference distribution for KS tests)
+- `data/prod_sim.csv` → `drift_monitoring/src/analyze_drift.py --mode batch` (production simulation for batch drift)

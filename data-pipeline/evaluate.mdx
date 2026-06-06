@@ -1,0 +1,116 @@
+---
+title: "evaluate.py: Select and Register the Champion Model"
+sidebarTitle: "Evaluate Stage"
+description: "evaluate.py queries MLflow for the highest-accuracy run, registers it in the Model Registry as spotify-genre-classifier, and assigns the @champion alias for Docker deployment."
+---
+
+`evaluate.py` closes the training loop by promoting the single best-performing model to production. It queries every MLflow run logged by `train.py`, picks the one with the highest `accuracy` metric, registers that run's artifact under the name `spotify-genre-classifier` in the MLflow Model Registry, and stamps it with the `@champion` alias. The Dockerfile uses this alias to pull the correct model at container build time without ever hard-coding a version number.
+
+## Function Signature
+
+```python
+def evaluate_and_register(train_data_path: str = "data/train.csv")
+```
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `train_data_path` | `str` | `"data/train.csv"` | Path to the training CSV (used for context; the function primarily interacts with MLflow) |
+
+## How It Works
+
+<Steps>
+  <Step title="Connect to MLflow">
+    Read the tracking server address from the `MLFLOW_TRACKING_URI` environment variable, defaulting to `http://localhost:5000` if unset. Set the URI with `mlflow.set_tracking_uri(tracking_uri)` and instantiate `mlflow.tracking.MlflowClient()`.
+  </Step>
+  <Step title="Find the default experiment">
+    Resolve the experiment by name (`None` falls back to experiment ID `"0"`, the default experiment created automatically by MLflow).
+
+    ```python
+    experiment = client.get_experiment_by_name(None) or client.get_experiment("0")
+    ```
+  </Step>
+  <Step title="Search all runs ordered by accuracy">
+    Retrieve up to 100 runs from the experiment, sorted by `metrics.accuracy` descending so the best run is always first:
+
+    ```python
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["metrics.accuracy DESC"],
+        max_results=100
+    )
+    ```
+  </Step>
+  <Step title="Pick the best run">
+    Select `runs[0]` as `best_run`. If no runs exist, the function logs an error and returns early rather than raising an exception.
+  </Step>
+  <Step title="Register the model version">
+    Call `client.create_model_version()` to attach the run's `model` artifact to a named entry in the Model Registry:
+
+    ```python
+    model_version = client.create_model_version(
+        name=model_name,
+        source=model_uri,
+        run_id=best_run.info.run_id
+    )
+    ```
+  </Step>
+  <Step title="Assign the @champion alias">
+    Tag the new version as the champion so downstream consumers can reference it by alias rather than version number:
+
+    ```python
+    client.set_registered_model_alias(
+        name=model_name,
+        alias="champion",
+        version=model_version.version
+    )
+    ```
+  </Step>
+  <Step title="Write metrics.json">
+    Serialise evaluation results to `metrics.json` in the current working directory. DVC reads this file as a pipeline metric so `dvc metrics show` can surface it without launching the MLflow UI.
+  </Step>
+</Steps>
+
+## Output: metrics.json
+
+```json
+{
+  "best_run_id": "<mlflow-run-id>",
+  "best_accuracy": 0.87,
+  "model_type": "xgboost",
+  "model_name": "spotify-genre-classifier",
+  "champion_alias": "champion"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `best_run_id` | The MLflow run UUID of the champion model |
+| `best_accuracy` | Training accuracy of the winning run |
+| `model_type` | Value of the `model` param logged to the run (e.g. `"xgboost"`) |
+| `model_name` | Registry name used for all versions: `"spotify-genre-classifier"` |
+| `champion_alias` | Always `"champion"` — the alias the Dockerfile resolves at build time |
+
+## DVC Stage
+
+```yaml
+evaluate:
+  cmd: python src/evaluate.py --train_data data/train.csv
+  deps:
+    - src/evaluate.py
+    - models/
+  metrics:
+    - metrics.json:
+        cache: false
+```
+
+`metrics.json` is declared under `metrics:` (not `outs:`) so DVC treats it as a structured metric file. Run `dvc metrics show` or `dvc metrics diff` to compare values across Git commits.
+
+## CLI Usage
+
+```bash
+python src/evaluate.py --train_data data/train.csv
+```
+
+<Note>
+  `evaluate.py` must be run **after** `train.py` has completed at least one successful MLflow run. If no runs exist in the default experiment, the function logs `"No runs found. Did you run train.py?"` and exits without writing `metrics.json` or registering anything.
+</Note>

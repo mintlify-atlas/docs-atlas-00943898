@@ -1,0 +1,114 @@
+---
+title: "KS Test Implementation: run_ks_analysis and analyze_drift.py"
+sidebarTitle: "KS Analysis"
+description: "Implement the run_ks_analysis function using scipy.stats.ks_2samp to test each audio feature for distribution shift and produce a structured drift_report.json."
+---
+
+The Kolmogorov-Smirnov (KS) two-sample test measures whether two samples come from the same underlying probability distribution. It does this by computing the maximum absolute difference between the two empirical cumulative distribution functions. A p-value below 0.05 indicates statistically significant drift — the distributions are unlikely to be the same, and the model is receiving inputs that differ from its training distribution.
+
+## Function Signatures
+
+`analyze_drift.py` exposes three public functions. `run_ks_analysis` is the core implementation (the student TODO), and the two mode-specific functions are wrappers that load data before calling it:
+
+```python
+def run_ks_analysis(train_df: pd.DataFrame, prod_df: pd.DataFrame, output_path: str) -> dict
+def analyze_batch_drift(train_path: str, prod_path: str, output_path: str) -> dict
+def analyze_online_drift(train_path: str, api_logs_path: str, output_path: str) -> dict
+```
+
+## `run_ks_analysis` Implementation
+
+This is the student TODO. The function receives two DataFrames (training and production) and an output path. It must iterate over every feature in `AUDIO_FEATURES` that exists in both DataFrames, run the KS test, and accumulate results.
+
+The expected implementation for the TODO block is:
+
+```python
+for feature in features_to_test:
+    train_values = train_df[feature].dropna()
+    prod_values  = prod_df[feature].dropna()
+    ks_statistic, p_value = stats.ks_2samp(train_values, prod_values)
+    drift_detected = p_value < 0.05
+    drift_results["details"][feature] = {
+        "ks_statistic": float(ks_statistic),
+        "p_value": float(p_value),
+        "drift_detected": drift_detected,
+        "train_mean": float(train_values.mean()),
+        "prod_mean": float(prod_values.mean()),
+    }
+    if drift_detected:
+        drift_results["features_with_drift"] += 1
+        drift_results["drifted_features"].append(feature)
+```
+
+Key points:
+- `.dropna()` is called before passing values to `ks_2samp` to avoid errors from missing data.
+- `stats.ks_2samp` returns a `(statistic, p_value)` tuple — the statistic is the maximum CDF distance, the p-value is the significance level.
+- All float values are explicitly cast with `float()` to ensure JSON serialisability.
+- `features_to_test` is derived via `[f for f in AUDIO_FEATURES if f in train_df.columns and f in prod_df.columns]`, so the loop only runs over columns present in both DataFrames.
+
+<Info>
+  The KS test is non-parametric, so it works for any distribution shape — uniform, skewed, multimodal. It is sensitive to both location shifts (mean changes) and shape differences (variance, skewness), making it a versatile choice for audio feature drift.
+</Info>
+
+## Status Logic
+
+After the per-feature loop, `run_ks_analysis` computes an aggregate drift percentage and sets the overall status:
+
+```
+drift_percentage = features_with_drift / total_features_tested * 100
+```
+
+The `status` field in the output report is determined as follows:
+
+| Condition | `status` |
+|---|---|
+| `drift_percentage > 20` | `"DRIFT_DETECTED"` |
+| `drift_percentage ≤ 20` | `"NORMAL"` |
+
+This means at least 3 of the 12 audio features must show a p-value below 0.05 before the pipeline reports a drift alert.
+
+## `analyze_batch_drift`
+
+`analyze_batch_drift` handles the batch mode workflow. It reads both CSV files from disk and delegates to `run_ks_analysis`:
+
+```python
+def analyze_batch_drift(train_path: str, prod_path: str, output_path: str) -> dict:
+    train_df = pd.read_csv(train_path)
+    prod_df = pd.read_csv(prod_path)
+    return run_ks_analysis(train_df, prod_df, output_path)
+```
+
+Both CSVs originate from the temporal split in `process.py` — `train.csv` contains records with `year ≤ 2010` and `prod_sim.csv` contains records with `year > 2010`. Batch mode is primarily a historical distribution comparison and will typically produce a `DRIFT_DETECTED` status given the well-documented shift in music production styles between the pre-streaming and streaming eras.
+
+## `analyze_online_drift`
+
+`analyze_online_drift` handles the online mode workflow. API request logs are written by the FastAPI middleware as JSONL (newline-delimited JSON), so they must be parsed line by line:
+
+```python
+api_logs = []
+with open(api_logs_path, "r") as f:
+    for line in f:
+        if line.strip():
+            api_logs.append(json.loads(line))
+api_df = pd.DataFrame(api_logs)
+```
+
+Each line in `api_requests.jsonl` is a complete JSON object containing the audio features that were sent to `/predict`. The guard `if line.strip()` skips blank lines at the end of the file. Once parsed into a list of dicts, `pd.DataFrame(api_logs)` creates a production-equivalent DataFrame, and `run_ks_analysis` takes it from there.
+
+<Note>
+  If `api_requests.jsonl` does not exist yet (no predictions have been made), `analyze_online_drift` catches the `FileNotFoundError` and returns early with `{"status": "no_api_logs"}` rather than raising an exception. Run the FastAPI server and make at least one `/predict` call before running online drift analysis.
+</Note>
+
+## CLI Reference
+
+All arguments are passed to `src/analyze_drift.py` via `argparse`:
+
+| Argument | Required | Description |
+|---|---|---|
+| `--mode` | Yes | `batch` or `online` — selects which mode to run |
+| `--train_data` | Yes | Path to `data/train.csv` (baseline distribution) |
+| `--output` | No (default: `drift_report.json`) | Output path for the drift report JSON |
+| `--prod_data` | Batch only | Path to `data/prod_sim.csv` (required when `--mode batch`) |
+| `--api_logs` | Online only | Path to `logs/api_requests.jsonl` (required when `--mode online`) |
+
+Passing `--prod_data` in online mode (or `--api_logs` in batch mode) is silently ignored — the parser only reads the argument relevant to the active mode. Omitting the required mode-specific argument causes `argparse` to exit with an error message.

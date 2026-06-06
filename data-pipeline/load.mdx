@@ -1,0 +1,100 @@
+---
+title: "load.py: Ingest Raw Spotify Songs CSV"
+sidebarTitle: "Load Stage"
+description: "The load stage reads songs.csv from Kaggle and writes it as data/raw.csv, preserving all columns. Column filtering and splitting happen downstream in process.py."
+---
+
+`load.py` has a single, deliberate responsibility: read the raw Kaggle CSV from disk and save it unchanged as `data/raw.csv`. No columns are dropped, no rows are filtered, and no transformations are applied at this stage. Keeping the load step pure makes it easy to swap the data source without touching any downstream logic — all filtering and temporal splitting are handled exclusively by `process.py`.
+
+## Function Signature
+
+```python
+def load_data(source_path: str, output_path: str)
+```
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `source_path` | `str` | Path to the raw `songs.csv` downloaded from Kaggle |
+| `output_path` | `str` | Destination path where `data/raw.csv` will be written |
+
+## Implementation
+
+The function follows three steps:
+
+1. Creates any missing parent directories with `os.makedirs(os.path.dirname(output_path), exist_ok=True)` so the `data/` directory does not need to exist before running.
+2. Reads the CSV with `pandas.read_csv(source_path)` and logs the resulting shape and column list at `INFO` level so you can verify the correct file was loaded.
+3. Writes the DataFrame back to disk with `df.to_csv(output_path, index=False)`, preserving every original column exactly as-is.
+
+### Complete Source
+
+```python
+def load_data(source_path: str, output_path: str):
+    """
+    Load the Kaggle Spotify songs CSV and save as raw data.
+
+    Responsibility: reads the raw Kaggle CSV and saves it as-is.
+    Column filtering and temporal splitting happen in process.py, not here.
+
+    Args:
+        source_path: Path to songs.csv (downloaded from Kaggle)
+        output_path: Path where raw.csv should be saved
+    """
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    logger.info(f"Loading Spotify songs from {source_path}...")
+    df = pd.read_csv(source_path)
+
+    logger.info(f"Raw dataset shape: {df.shape}")
+    logger.info(f"Columns: {list(df.columns)}")
+
+    # All columns are kept here — filtering happens in process.py
+    df.to_csv(output_path, index=False)
+    logger.info(f"Saved raw data to {output_path}")
+```
+
+## DVC Stage
+
+The `load` stage in `dvc.yaml` wires `source_path` from `params.yaml` directly into the CLI call:
+
+```yaml
+load:
+  cmd: python src/load.py --source_path ${data.source_path} --output_path data/raw.csv
+  deps:
+    - src/load.py
+    - ${data.source_path}
+  outs:
+    - data/raw.csv:
+        cache: false
+```
+
+<Info>
+  `cache: false` means DVC tracks the file for change detection but does not store it in the DVC cache. This keeps the repository lightweight since `data/raw.csv` can always be regenerated from `songs.csv`.
+</Info>
+
+## CLI Usage
+
+The script can also be run directly outside of DVC:
+
+```bash
+python src/load.py --source_path songs.csv --output_path data/raw.csv
+```
+
+Both arguments are required (`required=True` in argparse). The script will exit with an error if either is missing.
+
+## Tests
+
+Three unit tests in `tests/test_load.py` cover the full contract of `load_data`:
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_load_data_creates_output` | The output CSV file is created on disk at the specified path |
+| `test_load_data_preserves_all_columns` | Every column from the source CSV is present in the output, with no additions or omissions |
+| `test_load_data_row_count_unchanged` | The number of rows in the output matches the input exactly |
+
+Each test builds a small in-memory DataFrame, writes it to a temporary directory, calls `load_data`, and asserts the expected postcondition. No network access or the full Kaggle dataset is required.
+
+Run the load tests in isolation:
+
+```bash
+pytest tests/test_load.py
+```

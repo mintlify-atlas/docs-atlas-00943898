@@ -1,0 +1,155 @@
+---
+title: "Common Pitfalls and Debugging Tips for the MLOps Homework"
+sidebarTitle: "Common Pitfalls"
+description: "Avoid the most frequent mistakes students make in the MLOps homework — off-by-one splits, missing MLflow logging, Pydantic field mismatches, and Docker build failures."
+---
+
+This page documents the most common mistakes students make in the MLOps Fundamentals Homework and exactly how to fix them. Work through these before opening your PR — each pitfall below has caused students to lose points that were otherwise within reach.
+
+<AccordionGroup>
+  <Accordion title="Off-by-one in the temporal split">
+    Year 2010 must go to the **training set** (`year <= 2010`), not to the production set. The single most common mistake is using a strict less-than (`year < 2010`), which silently misassigns every 2010 row to the production split.
+
+    ```python
+    # ❌ Wrong — year 2010 rows end up in prod_sim instead of train
+    train_df = df[df['year'] < year_threshold]
+    prod_df  = df[df['year'] >= year_threshold]
+
+    # ✅ Right — year 2010 rows are included in training
+    train_df = df[df['year'] <= year_threshold]
+    prod_df  = df[df['year'] > year_threshold]
+    ```
+
+    The test `test_process_data_year_boundary_condition` specifically checks this boundary condition. If it fails, this is the first thing to verify.
+  </Accordion>
+
+  <Accordion title="Forgetting to encode genre labels">
+    scikit-learn models require **numeric targets**. Passing raw string genre values (e.g., `'Rock'`, `'Pop'`) directly to `.fit()` raises a `ValueError`. You must encode the labels with `LabelEncoder` before fitting any model.
+
+    ```python
+    from sklearn.preprocessing import LabelEncoder
+
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)  # Converts 'Rock' → 0, 'Pop' → 1, etc.
+    ```
+
+    Keep the fitted `le` object — you will need it to decode numeric predictions back to genre strings when the API returns results.
+  </Accordion>
+
+  <Accordion title="Missing MLflow logging — parameters or metrics not logged">
+    If you train a model without an active `mlflow.start_run()` context, the run is recorded in the default experiment but carries **no parameters, no metrics, and no model artifact**. `evaluate.py` may still find the run, but graders check the MLflow UI explicitly for proper run naming and logged values.
+
+    Open the UI and confirm each run shows:
+    - The model's hyperparameters (e.g., `C` for Logistic Regression, `max_depth` for XGBoost)
+    - An `accuracy` metric
+    - A logged model artifact
+
+    ```bash
+    # Start the MLflow tracking server if it's not already running
+    mlflow server --host 0.0.0.0 --port 5000
+    ```
+
+    Then navigate to `http://localhost:5000` and confirm both the Logistic Regression and XGBoost runs appear with all expected values before running `evaluate.py`.
+  </Accordion>
+
+  <Accordion title="Pydantic field mismatches in SpotifyFeatures">
+    The test payload in `test_api.py` sends **exactly 12 fields**. If `SpotifyFeatures` is missing any field, has an extra field with a different name, or uses a wrong type (e.g., `duration_ms` as `float` instead of `int`), the endpoint returns `422 Unprocessable Entity` instead of `200 OK` and the test fails.
+
+    The exact fields and types that must match:
+
+    | Field | Type |
+    |-------|------|
+    | `danceability` | `float` |
+    | `energy` | `float` |
+    | `key` | `int` |
+    | `loudness` | `float` |
+    | `mode` | `int` |
+    | `speechiness` | `float` |
+    | `acousticness` | `float` |
+    | `instrumentalness` | `float` |
+    | `liveness` | `float` |
+    | `valence` | `float` |
+    | `tempo` | `float` |
+    | `duration_ms` | `int` |
+
+    Pay special attention to `key`, `mode`, and `duration_ms` — these are integers, not floats.
+  </Accordion>
+
+  <Accordion title="Docker build fails — model not registered">
+    The `RUN mlflow models download` step in the Dockerfile requires two things to be true **at build time**:
+
+    1. The MLflow tracking server must be reachable from the machine running `docker build`.
+    2. The `spotify-genre-classifier` model must already have a `@champion` alias registered in the Model Registry.
+
+    The correct build order is:
+
+    1. Run `dvc repro` in `data_pipeline/` to execute the full training pipeline.
+    2. Open the MLflow UI at `http://localhost:5000` and verify the champion alias is assigned.
+    3. Only then run `docker build`.
+
+    ```bash
+    # Ensure MLflow is running before building
+    mlflow server --host 0.0.0.0 --port 5000
+
+    # Override the tracking URI if your MLflow server is on a non-default host
+    docker build --build-arg MLFLOW_TRACKING_URI=http://localhost:5000 -t spotify-api:latest .
+    ```
+
+    If the build fails with "Connection refused", the MLflow server is not running or is not accessible from the Docker build context.
+  </Accordion>
+
+  <Accordion title="Git not tracking all files — CI fails with import errors">
+    If you create new files (e.g., a utility module or helper script) but forget to `git add` them, those files exist locally but are invisible to CI. The result is an `ImportError` or `ModuleNotFoundError` in the Actions run even though all tests pass on your machine.
+
+    Always run `git status` before pushing to verify every changed or new file is staged:
+
+    ```bash
+    git status          # Confirm no untracked files relevant to your implementation
+    git add .
+    git commit -m "feat: add helper utilities"
+    git push origin solution/<your-name>
+    ```
+  </Accordion>
+
+  <Accordion title="flake8 E501 — line too long">
+    By default, flake8 flags lines longer than 79 characters as `E501`. Long lines most commonly appear in MLflow logging calls, dictionary literals, and URL strings. There are two clean ways to handle this:
+
+    **Option 1** — use Python's implicit line continuation inside parentheses:
+
+    ```python
+    # Break the call across multiple lines inside parentheses
+    mlflow.log_params({
+        "C": params["C"],
+        "max_iter": params["max_iter"],
+    })
+    ```
+
+    **Option 2** — suppress the warning on a specific line where breaking would hurt readability:
+
+    ```python
+    mlflow.set_tracking_uri("http://localhost:5000")  # noqa: E501
+    ```
+
+    Run `flake8 .` locally before every push — it runs in under a second and shows you exactly which lines to fix.
+  </Accordion>
+
+  <Accordion title="MLflow experiment is None in evaluate.py">
+    `evaluate.py` calls `client.get_experiment_by_name(experiment_name)` to find the runs from training. This returns `None` if no experiment with that name exists — which happens when `train.py` uses a **different experiment name** or never calls `mlflow.set_experiment()` at all and falls back to the default experiment (ID `"0"`).
+
+    To fix this, ensure the experiment name is consistent between `train.py` and `evaluate.py`:
+
+    ```python
+    # In train.py — set a named experiment before starting runs
+    mlflow.set_experiment("spotify-genre-classifier")
+
+    # In evaluate.py — search using the same name
+    experiment = client.get_experiment_by_name("spotify-genre-classifier")
+    ```
+
+    If you intentionally use the default experiment, update `evaluate.py` to fall back to `client.get_experiment("0")` when the named lookup returns `None`.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  If CI is failing but you cannot reproduce the error locally, paste the **full GitHub Actions log** into your PR description when asking for help. Sharing only the final error line makes it much harder for instructors to diagnose the root cause.
+</Note>

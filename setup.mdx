@@ -1,0 +1,150 @@
+---
+title: "Set Up the MLOps Homework Environment"
+sidebarTitle: "Setup"
+description: "Install Python dependencies, configure environment variables, download the 550k Spotify Songs dataset from Kaggle, and verify DVC data integrity before running the pipeline."
+---
+
+This page walks you through everything you need to do before running a single line of the pipeline. You will install the three independent requirements files, copy and populate the `.env` configuration, start the MLflow tracking server, download the Kaggle dataset, and verify that DVC sees the correct file hash. Complete each step in order — every subsequent stage in the pipeline depends on the outputs produced here.
+
+## Prerequisites
+
+Make sure the following are available on your machine before you begin.
+
+| Requirement | Minimum Version | Notes |
+|---|---|---|
+| Python | 3.9+ | `python --version` to check |
+| pip | Latest | Bundled with Python |
+| Git | Any recent | Needed to fork and clone the repo |
+| Docker | 20.10+ | Required for the model-serving container |
+| Kaggle account | — | Free at [kaggle.com](https://www.kaggle.com); API key required |
+
+<Note>
+  You will need approximately **2–3 GB** of free disk space to store the raw dataset, DVC-tracked outputs, and MLflow model artifacts.
+</Note>
+
+## Install and Configure
+
+<Steps>
+  <Step title="Create a virtual environment">
+    Isolate project dependencies from your system Python.
+
+    ```bash
+    python -m venv venv
+    source venv/bin/activate        # Windows: venv\Scripts\activate
+    ```
+  </Step>
+
+  <Step title="Install the data pipeline dependencies">
+    The data pipeline requirements cover pandas, scikit-learn, XGBoost, MLflow, DVC, and PyYAML.
+
+    ```bash
+    pip install -r data_pipeline/requirements.txt
+    ```
+  </Step>
+
+  <Step title="Install the model serving dependencies">
+    The model serving requirements add FastAPI, Uvicorn, and Pydantic v2 on top of the shared ML stack.
+
+    ```bash
+    pip install -r model_serving/requirements.txt
+    ```
+  </Step>
+
+  <Step title="Install the drift monitoring dependencies">
+    The drift monitoring requirements add SciPy for the Kolmogorov–Smirnov tests.
+
+    ```bash
+    pip install -r drift_monitoring/requirements.txt
+    ```
+  </Step>
+
+  <Step title="Install the Kaggle CLI">
+    The Kaggle CLI is not listed in any requirements file because it is only needed for the one-time dataset download.
+
+    ```bash
+    pip install kaggle
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Copy the provided example file and edit it to match your environment.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    The `.env` file contains the following variables:
+
+    ```bash
+    # MLflow tracking server URI
+    # Default: http://localhost:5000 (local server)
+    MLFLOW_TRACKING_URI=http://localhost:5000
+
+    # Optional: DVC remote storage (if using cloud storage)
+    # DVC_REMOTE_URL=s3://your-bucket/dvc-storage
+    ```
+
+    Load the variables into your current shell session:
+
+    ```bash
+    source .env
+    ```
+  </Step>
+
+  <Step title="Start the MLflow tracking server">
+    Open a **separate terminal** and leave this process running for the duration of your work session. All training runs and model registrations are sent to this server.
+
+    ```bash
+    mlflow server --host 0.0.0.0 --port 5000
+    ```
+
+    The MLflow UI will be available at [http://localhost:5000](http://localhost:5000).
+  </Step>
+
+  <Step title="Download the dataset from Kaggle">
+    The model is trained on the **550k Spotify Songs** dataset:
+    [https://www.kaggle.com/datasets/serkantysz/550k-spotify-songs-audio-lyrics-and-genres](https://www.kaggle.com/datasets/serkantysz/550k-spotify-songs-audio-lyrics-and-genres)
+
+    First authenticate with the Kaggle API (you will need credentials from [kaggle.com/settings/account](https://www.kaggle.com/settings/account) saved as `~/.kaggle/kaggle.json`):
+
+    ```bash
+    kaggle auth
+    ```
+
+    Then download and unzip the dataset:
+
+    ```bash
+    kaggle datasets download -d serkantysz/550k-spotify-songs-audio-lyrics-and-genres
+    unzip 550k-spotify-songs-audio-lyrics-and-genres.zip
+    ```
+
+    Move the CSV into the expected location:
+
+    ```bash
+    mv songs.csv data_pipeline/songs.csv
+    ```
+
+    The DVC pipeline expects the file at `data_pipeline/songs.csv`. The filename must be exactly `songs.csv`.
+  </Step>
+
+  <Step title="Verify dataset integrity with DVC">
+    Change into the `data_pipeline/` directory and run `dvc status` to confirm DVC recognises the file you downloaded.
+
+    ```bash
+    cd data_pipeline
+    dvc status songs.csv.dvc
+    ```
+
+    <Note>
+      The expected MD5 hash for the correct dataset file is **`0e71e2c46244acac485bd8c245aa6e56`**. After running `dvc repro`, check that the hash recorded in `dvc.lock` matches this value. A mismatch means you have a different version of the dataset and the grader's hash check will fail.
+    </Note>
+
+    Once the file is verified, run the full pipeline:
+
+    ```bash
+    dvc repro
+    ```
+
+    DVC will execute the four stages in order — `load`, `process`, `train`, `evaluate` — and cache each output for future runs.
+  </Step>
+</Steps>

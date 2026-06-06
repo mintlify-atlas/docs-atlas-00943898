@@ -1,0 +1,132 @@
+---
+title: "Drift Monitoring: Detecting Distribution Shift in Spotify Features"
+sidebarTitle: "Overview"
+description: "Overview of the drift monitoring module — running Kolmogorov-Smirnov tests across 12 Spotify audio features in batch mode (CSV vs CSV) and online mode (CSV vs API logs)."
+---
+
+The `drift_monitoring` module detects whether the distribution of Spotify audio features has shifted between the training era (≤2010) and production (>2010 or live API traffic). By comparing the statistical properties of each audio feature between a known baseline and a production dataset, it surfaces when the model may be receiving inputs that look meaningfully different from what it was trained on — a leading signal that prediction quality has likely degraded.
+
+## Two Modes
+
+<Tabs>
+  <Tab title="Batch Mode">
+    Batch mode compares `data/train.csv` against `data/prod_sim.csv` — the two temporal CSV splits produced by `process.py`. This is a direct comparison of the pre-streaming era (≤2010) against the streaming era (>2010) and represents the expected historical distribution shift.
+
+    ```bash
+    python src/analyze_drift.py \
+      --mode batch \
+      --train_data data_pipeline/data/train.csv \
+      --prod_data data_pipeline/data/prod_sim.csv \
+      --output drift_report.json
+    ```
+  </Tab>
+  <Tab title="Online Mode">
+    Online mode compares `data/train.csv` against `logs/api_requests.jsonl` — live request logs written by the FastAPI middleware on every call to `/predict`. This detects drift in real-time traffic without needing a pre-split production CSV.
+
+    ```bash
+    python src/analyze_drift.py \
+      --mode online \
+      --train_data data_pipeline/data/train.csv \
+      --api_logs model_serving/logs/api_requests.jsonl \
+      --output drift_report.json
+    ```
+  </Tab>
+</Tabs>
+
+## Audio Features Tested
+
+The KS test is applied independently to each of the 12 Spotify audio features defined in `AUDIO_FEATURES`:
+
+- `danceability`
+- `energy`
+- `key`
+- `loudness`
+- `mode`
+- `speechiness`
+- `acousticness`
+- `instrumentalness`
+- `liveness`
+- `valence`
+- `tempo`
+- `duration_ms`
+
+Every feature present in both the training and production DataFrames is tested. Missing features are silently skipped via the column intersection check in `run_ks_analysis`.
+
+## Drift Report Output
+
+Both modes write their results to `drift_report.json`. The report structure is:
+
+```json
+{
+  "timestamp": "2024-01-15T10:00:00",
+  "train_samples": 150000,
+  "production_samples": 400000,
+  "features_with_drift": 8,
+  "drifted_features": ["danceability", "energy", "tempo"],
+  "drift_percentage": 66.7,
+  "status": "DRIFT_DETECTED",
+  "details": {
+    "danceability": {
+      "ks_statistic": 0.42,
+      "p_value": 0.00001,
+      "drift_detected": true,
+      "train_mean": 0.48,
+      "prod_mean": 0.65
+    }
+  }
+}
+```
+
+The `details` object contains one entry per tested feature with the raw KS statistic, p-value, drift verdict, and the mean of each distribution — allowing you to see not just *whether* drift occurred but *in which direction* (e.g. mean danceability rising from 0.48 to 0.65).
+
+## Status Logic
+
+The overall `status` field is determined by the proportion of features that showed statistically significant drift:
+
+```
+drift_percentage = features_with_drift / total_features_tested * 100
+```
+
+| `drift_percentage` | `status` |
+|---|---|
+| > 20% | `DRIFT_DETECTED` |
+| ≤ 20% | `NORMAL` |
+
+<Note>
+  The 20% threshold means at least 3 of the 12 features must exhibit significant drift before the pipeline raises an alert.
+</Note>
+
+## Dependencies
+
+The drift monitoring module requires only two libraries, listed in `drift_monitoring/requirements.txt`:
+
+| Package | Minimum Version | Purpose |
+|---|---|---|
+| `pandas` | `>=2.0.0` | Loading and manipulating CSV and JSONL data |
+| `scipy` | `>=1.10.0` | `scipy.stats.ks_2samp` for the KS two-sample test |
+
+## CLI Usage
+
+Both modes are invoked through the same entry point, `src/analyze_drift.py`, with the `--mode` flag selecting between them:
+
+```bash
+# Batch mode — compare temporal CSV splits
+python src/analyze_drift.py \
+  --mode batch \
+  --train_data data_pipeline/data/train.csv \
+  --prod_data data_pipeline/data/prod_sim.csv \
+  --output drift_report.json
+
+# Online mode — compare training baseline against live API logs
+python src/analyze_drift.py \
+  --mode online \
+  --train_data data_pipeline/data/train.csv \
+  --api_logs model_serving/logs/api_requests.jsonl \
+  --output drift_report.json
+```
+
+<CardGroup cols={1}>
+  <Card title="KS Analysis" icon="flask" href="/drift-monitoring/ks-analysis">
+    Dive into the `run_ks_analysis` implementation — how `scipy.stats.ks_2samp` is applied per feature, how the drift results dict is built, and the full CLI argument reference.
+  </Card>
+</CardGroup>

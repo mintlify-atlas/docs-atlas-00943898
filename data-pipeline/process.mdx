@@ -1,0 +1,97 @@
+---
+title: "process.py: Temporal Train/Prod Split at the 2010 Boundary"
+sidebarTitle: "Process Stage"
+description: "The process stage splits data/raw.csv into train.csv (year ≤ 2010) and prod_sim.csv (year > 2010), creating the distribution shift that drift monitoring will detect."
+---
+
+`process.py` splits the raw Spotify dataset into two temporally-separated subsets using the song release year as the boundary. Tracks released on or before 2010 — the pre-streaming, CD/iTunes era — go into `data/train.csv`. Tracks released after 2010 — the Spotify streaming era — go into `data/prod_sim.csv`. This intentional distribution shift across the 2010 boundary is the signal that the drift monitoring component will later detect: audio feature distributions changed measurably when streaming economics reshaped what music gets made and released.
+
+## Function Signature
+
+```python
+def process_data(
+    input_path: str,
+    train_output: str,
+    prod_output: str,
+    year_threshold: int = 2010
+)
+```
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `input_path` | `str` | — | Path to `data/raw.csv` produced by `load.py` |
+| `train_output` | `str` | — | Destination path for the training split (`year <= year_threshold`) |
+| `prod_output` | `str` | — | Destination path for the production simulation split (`year > year_threshold`) |
+| `year_threshold` | `int` | `2010` | Year boundary; rows at exactly this year go to **train** |
+
+## What to Implement (TODO)
+
+This function is a student exercise. The scaffold reads and logs the raw dataset; you must complete the two `TODO` blocks to produce the final CSV outputs.
+
+**Step 1 — Split by year using boolean indexing:**
+
+```python
+train_df = df[df['year'] <= year_threshold]
+prod_df  = df[df['year'] >  year_threshold]
+logger.info(f"Train size: {len(train_df)}, Prod size: {len(prod_df)}")
+```
+
+**Step 2 — Create output directories and save both splits:**
+
+```python
+os.makedirs(os.path.dirname(train_output), exist_ok=True)
+os.makedirs(os.path.dirname(prod_output), exist_ok=True)
+train_df.to_csv(train_output, index=False)
+prod_df.to_csv(prod_output, index=False)
+```
+
+<Warning>
+  **Boundary condition:** a track released in exactly `year_threshold` (e.g. 2010) must land in the **train** set (`<=`), not in the prod-sim set. The test `test_process_data_year_boundary_condition` verifies this explicitly — `year=2010` → train, `year=2011` → prod.
+</Warning>
+
+## DVC Stage
+
+The `process` stage passes the `year_threshold` from `params.yaml` via `${data.train_year_threshold}`:
+
+```yaml
+process:
+  cmd: python src/process.py --input_path data/raw.csv --train_output data/train.csv --prod_output data/prod_sim.csv --year_threshold ${data.train_year_threshold}
+  deps:
+    - data/raw.csv
+    - src/process.py
+  outs:
+    - data/train.csv
+    - data/prod_sim.csv
+```
+
+Both outputs are DVC-tracked with default caching enabled, so changing `train_year_threshold` in `params.yaml` will trigger a re-run of `process` and all downstream stages.
+
+## CLI Usage
+
+Run the stage directly without DVC:
+
+```bash
+python src/process.py \
+  --input_path data/raw.csv \
+  --train_output data/train.csv \
+  --prod_output data/prod_sim.csv \
+  --year_threshold 2010
+```
+
+`--year_threshold` is optional and defaults to `2010` if omitted.
+
+## Tests
+
+Three unit tests in `tests/test_process.py` cover the splitting contract:
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_process_data_temporal_split` | Given 5 rows spanning 2005–2015, exactly 3 land in train (≤ 2010) and 2 in prod (> 2010) |
+| `test_process_data_preserves_audio_features` | All 12 expected audio feature columns (`danceability`, `energy`, `key`, `loudness`, `mode`, `speechiness`, `acousticness`, `instrumentalness`, `liveness`, `valence`, `tempo`, `duration_ms`) are present in both output files |
+| `test_process_data_year_boundary_condition` | `year=2010` appears in train, `year=2011` appears in prod; the exact sets `{2009, 2010}` and `{2011, 2012}` are verified |
+
+Run the process tests in isolation:
+
+```bash
+pytest tests/test_process.py
+```

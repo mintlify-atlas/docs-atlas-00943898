@@ -1,0 +1,127 @@
+---
+title: "Data Pipeline: DVC-Orchestrated ML Training Pipeline"
+sidebarTitle: "Overview"
+description: "Overview of the four-stage DVC pipeline that loads, processes, trains, and evaluates the Spotify genre classifier — with commands to run, visualize, and debug."
+---
+
+The data pipeline is a four-stage, DVC-orchestrated workflow that takes a raw Kaggle Spotify CSV all the way through to a registered champion model in MLflow. Each stage has a single responsibility and hands its output to the next: **load** ingests the raw file, **process** splits it into temporal train/prod sets, **train** fits Logistic Regression and XGBoost classifiers with full MLflow tracking, and **evaluate** picks the winner and registers it in the Model Registry.
+
+## Pipeline Stages
+
+| Stage | Script | Input | Output |
+|-------|--------|-------|--------|
+| `load` | `src/load.py` | `songs.csv` | `data/raw.csv` |
+| `process` | `src/process.py` | `data/raw.csv` | `data/train.csv`, `data/prod_sim.csv` |
+| `train` | `src/train.py` | `data/train.csv` | `models/` |
+| `evaluate` | `src/evaluate.py` | `models/` | `metrics.json` |
+
+## Running the Pipeline
+
+Use standard DVC commands from inside the `data_pipeline/` directory:
+
+```bash
+dvc repro          # Run full pipeline
+dvc dag            # Visualise the DAG
+dvc status         # Check what needs to rerun
+```
+
+DVC tracks file hashes at each stage boundary. If an upstream output hasn't changed, DVC skips the downstream stages automatically — only re-running what is actually stale.
+
+## Parameterization
+
+All hyperparameters and data configuration live in `params.yaml`. Changing any value there will cause DVC to mark dependent stages as stale on the next `dvc status` or `dvc repro`.
+
+```yaml
+data:
+  source_path: "songs.csv"
+  train_year_threshold: 2010
+train:
+  logistic_regression:
+    C: 1.0
+    max_iter: 1000
+  xgboost:
+    max_depth: 6
+    learning_rate: 0.1
+    n_estimators: 100
+```
+
+The `data.train_year_threshold` controls the temporal boundary used by `process.py` to create the intentional distribution shift between the training set (pre-streaming era) and the production simulation set (Spotify streaming era).
+
+## Stage Definitions (dvc.yaml)
+
+The full pipeline graph is declared in `dvc.yaml`:
+
+```yaml
+stages:
+  load:
+    cmd: python src/load.py --source_path ${data.source_path} --output_path data/raw.csv
+    deps:
+      - src/load.py
+      - ${data.source_path}
+    outs:
+      - data/raw.csv:
+          cache: false
+
+  process:
+    cmd: python src/process.py --input_path data/raw.csv --train_output data/train.csv --prod_output data/prod_sim.csv --year_threshold ${data.train_year_threshold}
+    deps:
+      - data/raw.csv
+      - src/process.py
+    outs:
+      - data/train.csv
+      - data/prod_sim.csv
+
+  train:
+    cmd: python src/train.py --data_path data/train.csv --params_path params.yaml
+    deps:
+      - data/train.csv
+      - src/train.py
+    params:
+      - train:
+    outs:
+      - models/:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py --train_data data/train.csv
+    deps:
+      - src/evaluate.py
+      - models/
+    metrics:
+      - metrics.json:
+          cache: false
+```
+
+## Dependencies
+
+Install all required packages before running the pipeline:
+
+```bash
+pip install -r requirements.txt
+```
+
+| Package | Version |
+|---------|---------|
+| `pandas` | `>=2.0.0` |
+| `scikit-learn` | `>=1.2.0` |
+| `xgboost` | `>=1.7.0` |
+| `mlflow` | `>=2.3.0` |
+| `dvc` | `>=3.0.0` |
+| `pyyaml` | `>=6.0` |
+
+## Stage Pages
+
+<CardGroup cols={2}>
+  <Card title="Load Stage" icon="file-arrow-down" href="/data-pipeline/load">
+    Ingest the raw Kaggle CSV and write `data/raw.csv` with all columns intact.
+  </Card>
+  <Card title="Process Stage" icon="scissors" href="/data-pipeline/process">
+    Split `data/raw.csv` by release year into temporal train and prod-sim sets.
+  </Card>
+  <Card title="Train Stage" icon="brain" href="/data-pipeline/train">
+    Train Logistic Regression and XGBoost classifiers with MLflow experiment tracking.
+  </Card>
+  <Card title="Evaluate Stage" icon="trophy" href="/data-pipeline/evaluate">
+    Select the best run and register it as the `@champion` model in MLflow.
+  </Card>
+</CardGroup>

@@ -1,0 +1,81 @@
+---
+title: "Model Serving: FastAPI Genre Classifier with Request Logging"
+sidebarTitle: "Overview"
+description: "Overview of the FastAPI model serving module — a containerized REST API that loads the MLflow champion model and classifies Spotify tracks by genre with confidence scores."
+---
+
+The `model_serving` module is a production-ready FastAPI application packaged in Docker that serves the MLflow champion model for Spotify genre prediction. It accepts Spotify audio features over HTTP, runs inference using the registered `@champion` model, and returns the predicted genre alongside a confidence score. Request logging middleware captures every prediction call to a local JSONL file, feeding downstream drift monitoring without any changes to the endpoint logic.
+
+## Architecture
+
+The serving stack is composed of four tightly integrated pieces:
+
+<CardGroup cols={2}>
+  <Card title="FastAPI Application" icon="bolt">
+    `app/main.py` defines the full lifecycle of the API — startup, request validation, inference, and error handling. It exposes two endpoints:
+
+    - **GET `/health`** — liveness probe used by load balancers and CI checks; returns `{"status": "healthy"}` with HTTP 200.
+    - **POST `/predict`** — accepts a `SpotifyFeatures` JSON body, runs `predict_genre()`, and returns a `PredictionResponse` with the predicted `genre` and `confidence` score.
+  </Card>
+  <Card title="Pydantic Request Validation" icon="shield-check">
+    The `SpotifyFeatures` Pydantic model enforces strict type validation on the 12 audio feature fields before any inference code runs. If a required field is missing or has the wrong type, FastAPI automatically returns HTTP 422 — no custom error handling needed.
+  </Card>
+  <Card title="Request Logging Middleware" icon="file-lines">
+    An HTTP middleware function intercepts every `POST /predict` call, appends a JSON line (all 12 feature fields plus a `timestamp`) to `logs/api_requests.jsonl`, then reconstructs the request body so the endpoint still reads it correctly. This file is consumed by the drift monitoring pipeline's online mode.
+  </Card>
+  <Card title="Docker Container" icon="docker">
+    The `Dockerfile` builds on `python:3.11-slim`. When fully implemented, it downloads the `@champion` model from MLflow at **build time** and bakes it into the image — the running container needs no live MLflow server to serve predictions.
+  </Card>
+</CardGroup>
+
+## Dependencies
+
+All runtime dependencies are pinned with minimum version constraints in `requirements.txt`:
+
+| Package | Minimum Version | Purpose |
+|---|---|---|
+| `fastapi` | `>=0.100.0` | Web framework and routing |
+| `uvicorn` | `>=0.23.0` | ASGI server |
+| `pydantic` | `>=2.0.0` | Request/response schema validation |
+| `pandas` | `>=2.0.0` | Feature vector construction |
+| `scikit-learn` | `>=1.2.0` | Model inference (sklearn pipeline) |
+| `xgboost` | `>=1.7.0` | XGBoost estimator support |
+| `mlflow` | `>=2.3.0` | Model loading and artifact management |
+
+## Running Locally
+
+To run the API locally without Docker, install the dependencies and start the Uvicorn server:
+
+```bash
+cd model_serving
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+<Note>
+  Running locally will attempt to load the model from `./models/` at prediction time. Make sure you have either run the Docker build (which bakes the model in) or manually placed the model artifact in that directory.
+</Note>
+
+## Running in Docker
+
+Build the self-contained image by passing the MLflow Tracking URI as a build argument. The build step downloads the `@champion` model and bakes it into the image so no external server is needed at runtime:
+
+```bash
+docker build --build-arg MLFLOW_TRACKING_URI=http://localhost:5000 -t genre-classifier .
+docker run -p 8000:8000 genre-classifier
+```
+
+<Warning>
+  The MLflow tracking server must be running and the champion model must already be registered before executing `docker build`. If MLflow is unreachable during the build, the `RUN mlflow models download` step will fail.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/model-serving/api-reference">
+    Full documentation of the `/health` and `/predict` endpoints, the `SpotifyFeatures` request schema, `PredictionResponse` fields, error codes, and request logging format.
+  </Card>
+  <Card title="Dockerfile" icon="docker" href="/model-serving/dockerfile">
+    Step-by-step guide to completing the Dockerfile TODO — downloading the champion model at build time to produce a fully self-contained inference container.
+  </Card>
+</CardGroup>

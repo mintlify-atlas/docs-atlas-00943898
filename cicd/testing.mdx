@@ -1,0 +1,130 @@
+---
+title: "Unit Tests: Data Pipeline and Model Serving"
+sidebarTitle: "Testing"
+description: "Overview of the pytest test suites for the data pipeline and model serving modules — what each test covers, how to run them, and what passing looks like."
+---
+
+The homework includes two pytest suites — one for `data_pipeline` and one for `model_serving`. Both must pass in their entirety for a green CI checkmark on your pull request. Each suite is designed to verify a specific slice of the pipeline: data ingestion and temporal splitting in the data pipeline, and HTTP contract correctness in the model serving API.
+
+## Data Pipeline Tests
+
+The `data_pipeline/tests/` directory contains two test files covering the `load_data` and `process_data` functions.
+
+### `test_load.py` — 3 tests
+
+All three tests create a temporary directory, write a sample CSV, call `load_data`, and inspect the output.
+
+<AccordionGroup>
+  <Accordion title="test_load_data_creates_output">
+    Verifies that `load_data` creates the output CSV file at the specified path (including any intermediate directories). The test passes a two-row sample DataFrame and asserts `os.path.exists(output_path)` after the call.
+  </Accordion>
+  <Accordion title="test_load_data_preserves_all_columns">
+    Verifies that all source columns pass through the load step unchanged. The sample input has five columns (`year`, `genre`, `danceability`, `energy`, `extra_column`) and the test asserts `list(result.columns) == list(sample.columns)` — order matters.
+  </Accordion>
+  <Accordion title="test_load_data_row_count_unchanged">
+    Verifies that the row count is identical between the source and the output. A three-row sample is written and the test asserts `len(result) == 3` after reading the output CSV back.
+  </Accordion>
+</AccordionGroup>
+
+```bash
+pytest data_pipeline/tests/
+pytest data_pipeline/tests/ -v  # verbose output
+```
+
+### `test_process.py` — 3 tests
+
+All three tests create a temporary directory, write a 14-column sample CSV with all audio features, call `process_data`, and inspect the resulting train/prod splits.
+
+<AccordionGroup>
+  <Accordion title="test_process_data_temporal_split">
+    Verifies rows are split correctly at `year_threshold=2010`. The sample contains years `[2005, 2008, 2010, 2012, 2015]`. After calling `process_data`:
+
+    - `train.csv` must have **3 rows** (years ≤ 2010: 2005, 2008, 2010)
+    - `prod.csv` must have **2 rows** (years > 2010: 2012, 2015)
+    - All values in `train_df["year"]` must satisfy `<= 2010`
+    - All values in `prod_df["year"]` must satisfy `> 2010`
+  </Accordion>
+  <Accordion title="test_process_data_preserves_audio_features">
+    Verifies all 12 audio feature columns are present in both output splits. The test iterates over `["danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness", "liveness", "valence", "tempo", "duration_ms"]` and asserts each column appears in both `train_df.columns` and `prod_df.columns`.
+  </Accordion>
+  <Accordion title="test_process_data_year_boundary_condition">
+    Verifies the exact boundary behaviour — `year=2010` goes to **train**, `year=2011` goes to **prod**. The sample contains years `[2009, 2010, 2011, 2012]`. After splitting:
+
+    - `train.csv` must have exactly `{2009, 2010}` in its `year` column
+    - `prod.csv` must have exactly `{2011, 2012}` in its `year` column
+  </Accordion>
+</AccordionGroup>
+
+```bash
+pytest data_pipeline/tests/
+pytest data_pipeline/tests/ -v
+```
+
+## Model Serving Tests
+
+The `model_serving/tests/` directory contains `test_api.py`, which uses FastAPI's `TestClient` to send HTTP requests directly to the application without starting a live server.
+
+### `test_api.py` — 3 tests
+
+<AccordionGroup>
+  <Accordion title="test_health_check">
+    Sends `GET /health` and asserts:
+
+    - HTTP status code `200`
+    - Response body exactly `{"status": "healthy"}`
+  </Accordion>
+  <Accordion title="test_predict_endpoint_valid_payload">
+    Sends `POST /predict` with a complete 12-field payload:
+
+    ```json
+    {
+      "danceability": 0.7,
+      "energy": 0.8,
+      "key": 5,
+      "loudness": -5.0,
+      "mode": 1,
+      "speechiness": 0.05,
+      "acousticness": 0.1,
+      "instrumentalness": 0.0,
+      "liveness": 0.2,
+      "valence": 0.6,
+      "tempo": 120.0,
+      "duration_ms": 240000
+    }
+    ```
+
+    Asserts HTTP status code `200` and that the response JSON contains both `"genre"` and `"confidence"` keys.
+  </Accordion>
+  <Accordion title="test_predict_endpoint_invalid_payload">
+    Sends `POST /predict` with only `{"danceability": 0.7}` — all 11 other required fields are absent. Asserts HTTP status code `422` (Unprocessable Entity), which FastAPI returns automatically when Pydantic validation fails.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Tests use FastAPI's `TestClient`, which wraps the ASGI app directly. No server needs to be running — `pytest model_serving/tests/` is sufficient.
+</Note>
+
+```bash
+pytest model_serving/tests/
+pytest model_serving/tests/ -v
+```
+
+## Running All Tests
+
+To run both suites in a single command — exactly as CI does:
+
+```bash
+pytest data_pipeline/tests model_serving/tests
+```
+
+## Code Style
+
+The project uses **flake8** for linting. The configuration in `.flake8` sets `max-line-length = 100` and extends the ignore list with `E203`. Run the linter with:
+
+```bash
+flake8 .
+```
+
+<Note>
+  A clean `flake8` run with no errors is worth **1 point** in the grading rubric. Fix all reported issues before opening your pull request.
+</Note>

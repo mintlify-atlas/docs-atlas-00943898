@@ -1,0 +1,109 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "MLOps Fundamentals Homework",
+  "projectDescription": "An end-to-end MLOps homework project implementing a production-ready Spotify genre classification pipeline with data versioning via DVC, MLflow experiment tracking, FastAPI model serving, and Kolmogorov-Smirnov drift monitoring.",
+  "theme": "aspen",
+  "primaryColor": "#2abaf1",
+  "lightColor": "#70ccea",
+  "darkColor": "#048cbc",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "setup",
+              "project-structure"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/dataset",
+              "concepts/temporal-split",
+              "concepts/mlflow-tracking"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Implementation Guide",
+        "groups": [
+          {
+            "group": "Stage 1 — Data Pipeline",
+            "pages": [
+              "data-pipeline/overview",
+              "data-pipeline/load",
+              "data-pipeline/process",
+              "data-pipeline/train",
+              "data-pipeline/evaluate"
+            ]
+          },
+          {
+            "group": "Stage 2 — Model Serving",
+            "pages": [
+              "model-serving/overview",
+              "model-serving/api-reference",
+              "model-serving/dockerfile"
+            ]
+          },
+          {
+            "group": "Stage 3 — Drift Monitoring",
+            "pages": [
+              "drift-monitoring/overview",
+              "drift-monitoring/ks-analysis"
+            ]
+          },
+          {
+            "group": "Testing & CI/CD",
+            "pages": [
+              "cicd/testing",
+              "cicd/github-actions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Submission & Grading",
+        "groups": [
+          {
+            "group": "Submission",
+            "pages": [
+              "submission/how-to-submit",
+              "submission/grading-rubric",
+              "submission/common-pitfalls"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "DVC-orchestrated 4-stage ML pipeline (load → process → train → evaluate)",
+    "Temporal train/prod split at 2010 Spotify streaming era boundary",
+    "MLflow experiment tracking with model registry and @champion alias",
+    "Logistic Regression and XGBoost genre classifiers (10 classes)",
+    "FastAPI model serving with request logging middleware",
+    "Docker containerization with baked-in champion model",
+    "Kolmogorov-Smirnov drift detection in batch and online modes",
+    "GitHub Actions CI with flake8 linting and pytest"
+  ],
+  "publicApiSurface": [
+    "GET /health — returns {\"status\": \"healthy\"}",
+    "POST /predict — accepts SpotifyFeatures payload, returns PredictionResponse {genre, confidence}",
+    "SpotifyFeatures: danceability, energy, key, loudness, mode, speechiness, acousticness, instrumentalness, liveness, valence, tempo, duration_ms",
+    "load_data(source_path, output_path) — data_pipeline/src/load.py",
+    "process_data(input_path, train_output, prod_output, year_threshold) — data_pipeline/src/process.py",
+    "train(data_path, params) — data_pipeline/src/train.py",
+    "evaluate_and_register(train_data_path) — data_pipeline/src/evaluate.py",
+    "run_ks_analysis(train_df, prod_df, output_path) — drift_monitoring/src/analyze_drift.py",
+    "analyze_batch_drift(train_path, prod_path, output_path) — drift_monitoring/src/analyze_drift.py",
+    "analyze_online_drift(train_path, api_logs_path, output_path) — drift_monitoring/src/analyze_drift.py",
+    "analyze_drift.py CLI: --mode [batch|online] --train_data --output [--prod_data | --api_logs]",
+    "dvc repro — runs full pipeline via dvc.yaml",
+    "params.yaml — data.source_path, data.train_year_threshold, train.logistic_regression.*, train.xgboost.*"
+  ]
+}

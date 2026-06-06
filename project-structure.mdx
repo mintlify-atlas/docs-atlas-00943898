@@ -1,0 +1,92 @@
+---
+title: "Project Structure: Monorepo Layout and Component Roles"
+sidebarTitle: "Project Structure"
+description: "Understand how the mlops-fundamentals-homework monorepo is organized across three independent subsystems: data pipeline, model serving, and drift monitoring."
+---
+
+The homework repository is a **monorepo** containing three independently runnable subsystems that share no Python packages at runtime but are linked by data artefacts and the MLflow Model Registry. Understanding the layout before you start coding will save you from path errors, missing-file surprises, and confusing CI failures. Each top-level directory has its own `requirements.txt`, its own test suite, and its own responsibility in the ML lifecycle.
+
+## Directory Tree
+
+```text
+mlops-fundamentals-homework/
+├── .github/workflows/       # CI/CD pipelines
+├── data_pipeline/           # DVC orchestrated ML training pipeline
+│   ├── src/                 # Scripts: load, process, train, evaluate
+│   ├── tests/               # Unit tests for pipeline steps
+│   ├── dvc.yaml             # Pipeline definition
+│   ├── params.yaml          # Hyperparameters and data config
+│   └── requirements.txt
+├── model_serving/           # FastAPI application and Docker deployment
+│   ├── app/                 # FastAPI code
+│   ├── tests/               # API integration tests
+│   ├── Dockerfile
+│   └── requirements.txt
+└── drift_monitoring/        # Scripts for offline batch drift detection
+    ├── src/
+    └── requirements.txt
+```
+
+## Data Flow
+
+Data moves through the system in a linear chain. Each step produces an artefact that feeds the next.
+
+<Steps>
+  <Step title="Raw CSV ingestion">
+    You download `songs.csv` from Kaggle and place it in `data_pipeline/`. DVC tracks the file via `songs.csv.dvc`, recording its MD5 hash so any accidental modification is caught before the pipeline runs.
+  </Step>
+
+  <Step title="DVC pipeline execution">
+    Running `dvc repro` inside `data_pipeline/` triggers the four-stage pipeline defined in `dvc.yaml`:
+    - **load** — copies `songs.csv` → `data/raw.csv`
+    - **process** — splits `data/raw.csv` on `year <= 2010` → `data/train.csv` and `data/prod_sim.csv`
+    - **train** — trains Logistic Regression and XGBoost, logging every run to MLflow
+    - **evaluate** — queries MLflow for the highest-accuracy run, registers the model, and assigns the `@champion` alias
+  </Step>
+
+  <Step title="MLflow Model Registry">
+    The `evaluate` stage calls the MLflow client API to create a registered model named `spotify-genre-classifier` and sets the `@champion` alias on the best version. From this point on, any process can reference the model by alias rather than by run ID.
+  </Step>
+
+  <Step title="Docker container build">
+    The `model_serving/Dockerfile` accepts `MLFLOW_TRACKING_URI` as a build argument and runs `mlflow models download -m "models:/spotify-genre-classifier@champion"` to bake the champion model into the image at build time. The running container needs no live MLflow connection.
+  </Step>
+
+  <Step title="FastAPI inference">
+    The containerised FastAPI application exposes `POST /predict`. Each request is validated by a Pydantic schema and routed to the baked-in model. The response includes the predicted genre and a confidence score.
+  </Step>
+
+  <Step title="JSONL request logging">
+    A FastAPI middleware intercepts every prediction request and appends a timestamped JSON line to `model_serving/logs/api_requests.jsonl`. This file is the input for online drift analysis.
+  </Step>
+
+  <Step title="Drift analysis">
+    The `drift_monitoring/src/analyze_drift.py` script runs Kolmogorov–Smirnov tests comparing `data/train.csv` against either `data/prod_sim.csv` (batch mode) or the JSONL request log (online mode), producing a JSON drift report.
+  </Step>
+</Steps>
+
+## Key Configuration Files
+
+| File | Location | Purpose |
+|---|---|---|
+| `dvc.yaml` | `data_pipeline/dvc.yaml` | Declares the four pipeline stages, their commands, dependencies, parameters, and outputs. Edit this if you add a new pipeline step. |
+| `params.yaml` | `data_pipeline/params.yaml` | Stores the `train_year_threshold` (2010) and all model hyperparameters (`C`, `max_depth`, `learning_rate`, etc.). DVC tracks parameter changes and re-runs only affected stages. |
+| `.env` | Repository root | Sets `MLFLOW_TRACKING_URI` (and optionally `DVC_REMOTE_URL`). Created by copying `.env.example`. Never commit this file. |
+| `ci.yml` | `.github/workflows/ci.yml` | Runs `flake8`, `pytest data_pipeline/tests`, and `pytest model_serving/tests` on every push to a PR. A green check is worth 1 grading point. |
+
+## Component Overview
+
+<CardGroup cols={2}>
+  <Card title="Data Pipeline" icon="database" href="/data-pipeline/overview">
+    DVC-orchestrated four-stage pipeline that takes the raw Kaggle CSV from ingestion through temporal splitting, model training, and champion registration.
+  </Card>
+  <Card title="Model Serving" icon="server" href="/model-serving/overview">
+    FastAPI application packaged in Docker. Validates audio features with Pydantic, runs inference against the baked-in champion model, and logs every request for drift analysis.
+  </Card>
+  <Card title="Drift Monitoring" icon="chart-bar" href="/drift-monitoring/overview">
+    Offline KS-test script that compares training-data distributions to either the held-out production split or live API logs, flagging features whose distribution has shifted.
+  </Card>
+  <Card title="CI/CD" icon="check-circle">
+    GitHub Actions workflow that lints with `flake8` and runs both test suites automatically on every pull request push.
+  </Card>
+</CardGroup>

@@ -1,0 +1,100 @@
+---
+title: "How to Submit: Fork, Branch, Implement, and Open a PR"
+sidebarTitle: "How to Submit"
+description: "Step-by-step instructions for forking the repo, creating a solution branch, implementing all homework stages, and opening a pull request with the required CI checkmark."
+---
+
+Submission is via GitHub pull request. Your grade depends on a passing CI run — implement all TODOs across the three homework stages, get a green checkmark in the Actions tab, then submit the PR URL to your instructor. The CI pipeline runs automatically on every push and checks both linting and tests.
+
+<Steps>
+  <Step title="Fork the Repository">
+    Go to the course repository on GitHub. Click **Fork** (top-right corner) → **Create fork**. This creates your own copy at `your-username/mlops-fundamentals-homework`.
+  </Step>
+
+  <Step title="Clone Your Fork">
+    Replace `<your-username>` with your actual GitHub username.
+
+    ```bash
+    git clone https://github.com/<your-username>/mlops-fundamentals-homework.git
+    cd mlops-fundamentals-homework
+    ```
+  </Step>
+
+  <Step title="Create a Working Branch">
+    All your work must live on a dedicated solution branch. Use your real name so graders can identify your submission at a glance.
+
+    ```bash
+    git checkout -b solution/<your-name>
+    # Example: git checkout -b solution/maria-garcia
+    ```
+  </Step>
+
+  <Step title="Set Up the Environment">
+    Install all dependencies and download the Spotify dataset before touching any source files. See the [Setup guide](/setup) for the full walkthrough — it covers creating the virtual environment, Kaggle authentication, and starting the MLflow server.
+  </Step>
+
+  <Step title="Implement the Tasks">
+    Work through each stage in order following the Implementation Guide below. Each stage feeds the next, so complete them sequentially. Commit your progress regularly so CI runs reflect incremental work:
+
+    ```bash
+    git add .
+    git commit -m "feat: implement data pipeline process step"
+    git push origin solution/<your-name>
+    ```
+  </Step>
+
+  <Step title="Open a Pull Request">
+    1. Go to your fork on GitHub.
+    2. Click **Compare & pull request** (GitHub shows this banner automatically after a push).
+    3. Set the **base repository** to the course repo and **base branch** to `main`.
+    4. Title your PR: `[Homework] <Your Full Name>` (e.g., `[Homework] Maria Garcia`).
+    5. Paste your completed Submission Checklist in the PR description.
+    6. Click **Create pull request**.
+  </Step>
+
+  <Step title="Verify the CI Checkmark">
+    The CI pipeline runs automatically on every push to your PR branch. Navigate to the **Actions** tab on your fork and confirm the latest run is green. A passing run — linting and all tests — is worth **1 point** toward your final grade.
+  </Step>
+</Steps>
+
+## PR Requirements
+
+<Note>
+  Your pull request must meet all three criteria before graders will review it:
+
+  - **Title format**: `[Homework] <Your Full Name>`
+  - **Base branch**: `main` on the **course repo** (not your fork)
+  - **CI must pass**: a green checkmark in GitHub Actions is required
+</Note>
+
+## Implementation Checklist
+
+Complete every item below before opening your PR. Each maps directly to a TODO comment in the source code and carries points in the grading rubric.
+
+### Stage 1 — Data Pipeline
+
+- [ ] **`process.py`** — implement the temporal split: year ≤ 2010 → `train.csv`, year > 2010 → `prod_sim.csv`; save both files with `to_csv(..., index=False)`
+- [ ] **`train.py`** — encode `genre` labels with `LabelEncoder`; scale features with `StandardScaler` for Logistic Regression (XGBoost skips scaling); loop through models in `params.yaml`, starting an `mlflow.start_run()` for each; log hyperparameters with `mlflow.log_params()`, accuracy with `mlflow.log_metric()`, and save model artifacts with `mlflow.sklearn.log_model()` / `mlflow.xgboost.log_model()`
+- [ ] **`evaluate.py`** — call `client.create_model_version()` to register the best run, then `client.set_registered_model_alias()` to assign the `@champion` alias
+
+### Stage 2 — Model Serving
+
+- [ ] **`app/main.py` — `SpotifyFeatures`** — add all 12 audio feature fields with correct types to the Pydantic model
+- [ ] **`app/main.py` — `GET /health`** — implement the endpoint returning `{"status": "healthy"}`
+- [ ] **`app/main.py` — `log_requests` middleware** — read the request body, parse as JSON, append a timestamped JSON line to `logs/api_requests.jsonl`, and reconstruct the request before calling `call_next`
+- [ ] **`app/main.py` — `predict_genre()`** — load the MLflow model from `./models/`, extract feature values from the `SpotifyFeatures` object, run inference, and return a `PredictionResponse` with genre and confidence
+- [ ] **`Dockerfile`** — add `ARG MLFLOW_TRACKING_URI` and the `RUN mlflow models download` step to pull the `@champion` model into `./models/` at build time
+
+### Stage 3 — Drift Monitoring
+
+- [ ] **`analyze_drift.py` — `run_ks_analysis()`** — loop over each feature in `features_to_test`, run `scipy.stats.ks_2samp(train_values, prod_values)`, flag drift when `p_value < 0.05`, and populate `drift_results["details"][feature]` with `ks_statistic`, `p_value`, `drift_detected`, `train_mean`, and `prod_mean`; this single function is reused by both batch and online modes
+
+<Tip>
+  Run `pytest` and `flake8` locally before every push to catch issues before they consume CI minutes. A clean local run almost always means a green checkmark.
+
+  ```bash
+  flake8 .
+  pytest data_pipeline/tests -v
+  pytest model_serving/tests -v
+  ```
+</Tip>

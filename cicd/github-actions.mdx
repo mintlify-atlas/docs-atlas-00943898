@@ -1,0 +1,139 @@
+---
+title: "GitHub Actions CI: Automated Linting and Testing on Pull Requests"
+sidebarTitle: "GitHub Actions"
+description: "How the CI pipeline triggers on pull requests, installs all dependencies, runs flake8 linting, and executes pytest on both the data pipeline and model serving test suites."
+---
+
+The `.github/workflows/ci.yml` pipeline runs automatically on every push to a pull request targeting the `main` branch. It validates your implementation against the full test suite and linter before any review happens — a green checkmark is worth **1 grading point** and signals that your code satisfies both style and correctness requirements.
+
+## Pipeline Overview
+
+The pipeline defines a single job, `test`, with four sequential steps:
+
+| Step | Tool | What it does |
+|---|---|---|
+| **Checkout** | `actions/checkout@v3` | Clones the repository into the runner |
+| **Set up Python** | `actions/setup-python@v4` | Installs Python 3.9 on `ubuntu-latest` |
+| **Install dependencies** | `pip` | Installs `flake8`, `pytest`, and all three `requirements.txt` files |
+| **Run Linter** | `flake8` | Checks the entire repository against `.flake8` rules |
+| **Run Tests** | `pytest` | Runs `data_pipeline/tests` then `model_serving/tests` |
+
+Both the linter and test steps run sequentially within the same job. If flake8 reports any error, the job fails before pytest runs.
+
+## Full `ci.yml`
+
+```yaml
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install flake8 pytest
+          pip install -r data_pipeline/requirements.txt
+          pip install -r model_serving/requirements.txt
+          pip install -r drift_monitoring/requirements.txt
+
+      - name: Run Linter
+        run: flake8 .
+
+      - name: Run Tests
+        run: |
+          pytest data_pipeline/tests
+          pytest model_serving/tests
+```
+
+## Getting a Green Checkmark
+
+<Steps>
+  <Step title="Fork the repo on GitHub">
+    Navigate to the repository on GitHub and click **Fork** to create your own copy under your account.
+  </Step>
+  <Step title="Create a solution branch">
+    ```bash
+    git checkout -b solution/your-name
+    ```
+  </Step>
+  <Step title="Implement all TODOs">
+    Fill in every `# TODO` block in the source files — `data_pipeline/src/load.py`, `data_pipeline/src/process.py`, `model_serving/app/main.py`, and `drift_monitoring/src/analyze_drift.py`.
+  </Step>
+  <Step title="Run tests locally">
+    ```bash
+    pytest data_pipeline/tests model_serving/tests
+    ```
+    All 6 tests must pass before you push.
+  </Step>
+  <Step title="Run flake8 locally">
+    ```bash
+    flake8 .
+    ```
+    Fix every reported issue. The `.flake8` config allows lines up to 100 characters and ignores `E203`.
+  </Step>
+  <Step title="Push and open a Pull Request">
+    Push your branch and open a PR targeting `main` on the upstream repository.
+  </Step>
+  <Step title="Watch the Actions tab">
+    Navigate to the **Actions** tab on GitHub and wait for the `CI Pipeline` workflow to complete. A green tick on all steps means you're done.
+  </Step>
+</Steps>
+
+<Tip>
+  Run both checks locally before pushing to avoid wasting CI runs — each push to the PR branch triggers a fresh pipeline execution.
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Flake8 fails with E501 line too long">
+    The `.flake8` config sets `max-line-length = 100`. For lines that genuinely cannot be shortened (e.g. long log strings or URLs), append `# noqa: E501` to suppress the warning on that line. For most cases, break the line using implicit string continuation or a backslash:
+
+    ```python
+    # Too long
+    logger.info(f"Training samples: {len(train_df)} | Production samples: {len(prod_df)} | Status: ok")
+
+    # Fixed — break at a logical boundary
+    logger.info(
+        f"Training samples: {len(train_df)} | "
+        f"Production samples: {len(prod_df)} | Status: ok"
+    )
+    ```
+  </Accordion>
+  <Accordion title="pytest fails with ImportError">
+    Each test file uses relative imports (`from src.load import load_data`). Run pytest from the module root, or set `PYTHONPATH` explicitly:
+
+    ```bash
+    # From the repo root — correct
+    pytest data_pipeline/tests
+
+    # If pytest still can't find src/
+    PYTHONPATH=data_pipeline pytest data_pipeline/tests
+    PYTHONPATH=model_serving pytest model_serving/tests
+    ```
+  </Accordion>
+  <Accordion title="CI passes locally but fails on GitHub">
+    The most common cause is uncommitted files. Check your git status before pushing:
+
+    ```bash
+    git status
+    git add -A
+    git commit -m "implement all TODOs"
+    git push origin solution/your-name
+    ```
+
+    Also verify that your local Python version matches the CI runner (`3.9`) — some syntax or library behaviour differs between minor versions.
+  </Accordion>
+</AccordionGroup>

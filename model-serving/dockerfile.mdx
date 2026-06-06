@@ -1,0 +1,115 @@
+---
+title: "Dockerfile: Building a Self-Contained Inference Container"
+sidebarTitle: "Dockerfile"
+description: "Learn how to extend the model_serving Dockerfile to download the MLflow @champion model at build time, producing a container that runs without a live MLflow server."
+---
+
+The `model_serving` Dockerfile produces a self-contained container image that includes the champion model artifact baked directly into the image layers — no MLflow server is required at runtime. The build-time download strategy means the resulting image can be shipped to any environment and will serve predictions immediately, without any dependency on the MLflow tracking server that registered the model.
+
+## Current Dockerfile
+
+The skeleton Dockerfile sets up the Python environment and copies the application code, but leaves the model download step as a TODO for students to implement:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# TODO: Pull the @champion model from MLflow and bake it into the image.
+#
+# The model was registered in evaluate.py with the alias "champion".
+# Use the mlflow CLI to download it here so the container is self-contained
+# and doesn't need a live MLflow server at runtime.
+#
+# Hint:
+#   ARG MLFLOW_TRACKING_URI=http://localhost:5000
+#   RUN mlflow models download -m "models:/spotify-genre-classifier@champion" \
+#       -d ./models --no-directory
+#
+# After this step, load the model in predict_genre() using:
+#   mlflow.sklearn.load_model("./models")
+
+COPY ./app ./app
+RUN touch /app/app/__init__.py
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## What to Implement (TODO)
+
+To make the container self-contained, replace the TODO comment block with these two lines:
+
+```dockerfile
+ARG MLFLOW_TRACKING_URI=http://localhost:5000
+RUN mlflow models download -m "models:/spotify-genre-classifier@champion" \
+    -d ./models --no-directory
+```
+
+**What each line does:**
+
+- **`ARG MLFLOW_TRACKING_URI`** — Declares a build-time variable that is automatically picked up by the MLflow CLI as the `MLFLOW_TRACKING_URI` environment variable during the `RUN` step. The default value (`http://localhost:5000`) can be overridden with `--build-arg` at build time. This variable is not present in the final image, keeping credentials out of the runtime environment.
+- **`RUN mlflow models download`** — Invokes the MLflow CLI during the image build to fetch the model registered under the `@champion` alias. The `-d ./models` flag writes the artifact into `/app/models/` inside the container. The `--no-directory` flag prevents MLflow from creating an extra subdirectory, so `predict_genre()` can load the model directly from `./models`.
+
+<Warning>
+  The MLflow tracking server must be running **and** the champion model must be registered with the `@champion` alias before running `docker build`. If MLflow is unreachable or the alias does not exist, the `RUN mlflow models download` step will fail and the build will abort.
+</Warning>
+
+## Complete Dockerfile
+
+After implementing the TODO, the full Dockerfile should look like this:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+ARG MLFLOW_TRACKING_URI=http://localhost:5000
+RUN mlflow models download -m "models:/spotify-genre-classifier@champion" \
+    -d ./models --no-directory
+
+COPY ./app ./app
+RUN touch /app/app/__init__.py
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## Build Commands
+
+```bash
+# Build — MLflow must be running and champion model must be registered
+docker build \
+  --build-arg MLFLOW_TRACKING_URI=http://localhost:5000 \
+  -t genre-classifier .
+
+# Run the container
+docker run -p 8000:8000 genre-classifier
+
+# Test the health endpoint
+curl http://localhost:8000/health
+```
+
+<Note>
+  The `--build-arg MLFLOW_TRACKING_URI` value must point to your actual MLflow tracking server. If MLflow is running on a different host or port, substitute that address here. The value is used only at build time and is not embedded in the final image.
+</Note>
+
+## Loading the Model in `predict_genre()`
+
+Once the build step has downloaded the artifact to `./models/`, the `predict_genre()` function in `app/main.py` loads it at inference time using the MLflow sklearn loader:
+
+```python
+import mlflow
+
+model = mlflow.sklearn.load_model("./models")
+```
+
+The path `./models` resolves to `/app/models/` inside the container, which is exactly where the `RUN mlflow models download -d ./models` step placed the artifact. Because the model is already on disk, this call is fast — there is no network round-trip to MLflow at prediction time.
+
+<Tip>
+  See [Evaluate & Register Champion Model](/data-pipeline/evaluate) for the steps that register the trained model with the `@champion` alias in the MLflow Model Registry — a prerequisite before `docker build` will succeed.
+</Tip>

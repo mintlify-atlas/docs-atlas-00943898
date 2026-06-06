@@ -1,0 +1,103 @@
+---
+title: "550k Spotify Songs Dataset: Audio Features and Genres"
+sidebarTitle: "Dataset"
+description: "Explore the Kaggle Spotify dataset used in this homework: 550,000 tracks with 12 audio features and 10 genre labels spanning multiple decades of music."
+---
+
+The model in this homework is trained on the **550k Spotify Songs** dataset published on Kaggle by Serkan Tysz. It contains approximately 550,000 tracks drawn from multiple decades of recorded music, each annotated with Spotify's proprietary audio feature measurements and a manually assigned top-level genre label. The combination of scale, feature richness, and a wide temporal range makes it an ideal dataset for both multi-class genre classification and the realistic simulation of data drift across the 2010 streaming-era boundary.
+
+## Dataset Overview
+
+| Property | Value |
+|---|---|
+| Total tracks | ~550,000 |
+| Audio features | 12 numeric columns |
+| Genre classes | 10 |
+| Temporal range | Multiple decades of music |
+| Training split (`year ≤ 2010`) | CD/iTunes era tracks |
+| Production split (`year > 2010`) | Streaming era tracks |
+| File format | CSV (`songs.csv`) |
+| Approximate download size | ~2–3 GB |
+
+## Audio Features
+
+Your model must use the following 12 numeric columns as input features. All values are computed by Spotify's audio analysis engine and represent objective measurements of the audio signal.
+
+| Feature | Type | Range | Description |
+|---|---|---|---|
+| `danceability` | float | 0–1 | How suitable the track is for dancing; combines tempo, rhythm stability, beat strength, and regularity |
+| `energy` | float | 0–1 | Perceptual measure of intensity and activity; energetic tracks feel fast, loud, and noisy |
+| `key` | int | 0–11 | Estimated overall pitch class of the track using standard Pitch Class notation (0 = C, 1 = C#/D♭, …) |
+| `loudness` | float | dB | Overall loudness in decibels, averaged across the entire track; typical range is −60 to 0 dB |
+| `mode` | int | 0 or 1 | Modality of the track: major (1) or minor (0) |
+| `speechiness` | float | 0–1 | Presence of spoken words; values above 0.66 indicate almost entirely speech |
+| `acousticness` | float | 0–1 | Confidence that the track is acoustic; 1.0 represents high confidence |
+| `instrumentalness` | float | 0–1 | Predicts whether the track contains no vocals; values above 0.5 represent instrumental tracks |
+| `liveness` | float | 0–1 | Detects the presence of an audience; values above 0.8 suggest a live recording |
+| `valence` | float | 0–1 | Musical positiveness; high valence sounds happy and cheerful, low valence sounds sad or angry |
+| `tempo` | float | BPM | Estimated overall tempo in beats per minute |
+| `duration_ms` | int | ms | Duration of the track in milliseconds |
+
+<Info>
+  The dataset also contains metadata columns (`id`, `name`, `album_name`, `artists`, `lyrics`) and popularity metrics (`popularity`, `total_artist_followers`, `avg_artist_popularity`). These are not required as model input features but you may experiment with including them. The `year` column is used exclusively for the temporal split and must be dropped before training.
+</Info>
+
+## Genre Classes
+
+The `genre` column contains one of the following 10 string labels. Your training pipeline encodes these with `LabelEncoder` before fitting a model.
+
+| # | Genre |
+|---|---|
+| 1 | Rock |
+| 2 | Pop |
+| 3 | Electronic |
+| 4 | Folk |
+| 5 | Country |
+| 6 | Hip-Hop |
+| 7 | R&B |
+| 8 | Jazz |
+| 9 | Blues |
+| 10 | Classical |
+
+## Downloading the Dataset
+
+The dataset requires a free Kaggle account and API credentials.
+
+**Dataset page**: [https://www.kaggle.com/datasets/serkantysz/550k-spotify-songs-audio-lyrics-and-genres](https://www.kaggle.com/datasets/serkantysz/550k-spotify-songs-audio-lyrics-and-genres)
+
+<Steps>
+  <Step title="Set up Kaggle credentials">
+    Download your API key from [kaggle.com/settings/account](https://www.kaggle.com/settings/account) and save it as `~/.kaggle/kaggle.json`, then authenticate:
+
+    ```bash
+    pip install kaggle
+    kaggle auth
+    ```
+  </Step>
+
+  <Step title="Download and extract the dataset">
+    ```bash
+    kaggle datasets download -d serkantysz/550k-spotify-songs-audio-lyrics-and-genres
+    unzip 550k-spotify-songs-audio-lyrics-and-genres.zip
+    ```
+  </Step>
+
+  <Step title="Move to the expected location">
+    The DVC pipeline reads the file from `data_pipeline/songs.csv`. The filename must be exactly `songs.csv`.
+
+    ```bash
+    mv songs.csv data_pipeline/songs.csv
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  After placing the file, verify it with DVC to confirm you have the correct version:
+
+  ```bash
+  cd data_pipeline
+  dvc status songs.csv.dvc
+  ```
+
+  The expected MD5 hash is `0e71e2c46244acac485bd8c245aa6e56`. If the hash in `dvc.lock` after `dvc repro` does not match, the grader's dataset-integrity check will fail.
+</Note>

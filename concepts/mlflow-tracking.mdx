@@ -1,0 +1,121 @@
+---
+title: "MLflow Experiment Tracking and the Champion Model Registry"
+sidebarTitle: "MLflow Tracking"
+description: "Learn how the homework uses MLflow to log parameters, metrics, and model artifacts, and how the @champion alias enables zero-config model deployment in Docker."
+---
+
+MLflow is the connective tissue between your training pipeline and your deployed container. Every time `src/train.py` runs, it opens an MLflow run, records the hyperparameters and accuracy for that model, and stores the serialised model artifact in the tracking server's backend store. Once all runs are complete, `src/evaluate.py` queries those runs, picks the winner, and publishes it to the MLflow Model Registry under the `@champion` alias. The Dockerfile then downloads exactly that alias at build time — so the container is always running whichever model your pipeline has decided is the current best, with no manual intervention required.
+
+## Starting the MLflow Server
+
+All components expect a running MLflow tracking server. Start it in a dedicated terminal before running the pipeline or building the container.
+
+```bash
+mlflow server --host 0.0.0.0 --port 5000
+```
+
+Then ensure your shell environment points to the server by setting `MLFLOW_TRACKING_URI` in your `.env` file:
+
+```bash
+# .env
+MLFLOW_TRACKING_URI=http://localhost:5000
+```
+
+Load the variable before running any pipeline step:
+
+```bash
+source .env
+```
+
+## What Gets Logged in `train.py`
+
+The training script iterates over every model configuration in `params.yaml` and opens a separate MLflow run for each one. The pseudocode in the skeleton file illustrates exactly what each run must log:
+
+```python
+# data_pipeline/src/train.py  (illustrative implementation)
+with mlflow.start_run(run_name=model_name):
+    # 1. Hyperparameters from params.yaml
+    mlflow.log_params(model_params)
+    # e.g. {"C": 1.0, "max_iter": 1000} for logistic_regression
+    # e.g. {"max_depth": 6, "learning_rate": 0.1, "n_estimators": 100} for xgboost
+
+    # 2. Fit the model
+    model.fit(X_to_use, y_encoded)
+
+    # 3. Accuracy metric
+    accuracy = model.score(X_to_use, y_encoded)
+    mlflow.log_metric("accuracy", accuracy)
+
+    # 4. Model artifact — use the flavour-appropriate function
+    mlflow.sklearn.log_model(model, artifact_path="model")
+    # OR for XGBoost:
+    # mlflow.xgboost.log_model(model, artifact_path="model")
+```
+
+The two model types configured in `params.yaml` produce two separate runs in the default MLflow experiment, each visible in the tracking UI with their respective parameters and metrics.
+
+## The Champion Alias in `evaluate.py`
+
+After training, the `evaluate` stage finds the run with the highest logged accuracy and registers it in the MLflow Model Registry under a fixed model name. Two MLflow client calls implement this:
+
+```python
+# data_pipeline/src/evaluate.py
+client = mlflow.tracking.MlflowClient()
+
+# 1. Search all runs, ordered by accuracy descending
+runs = client.search_runs(
+    experiment_ids=[experiment.experiment_id],
+    order_by=["metrics.accuracy DESC"],
+    max_results=100
+)
+best_run = runs[0]
+model_uri = f"runs:/{best_run.info.run_id}/model"
+model_name = "spotify-genre-classifier"
+
+# 2. Register the model artifact as a new version
+model_version = client.create_model_version(
+    name=model_name,
+    source=model_uri,
+    run_id=best_run.info.run_id
+)
+
+# 3. Tag that version with the @champion alias
+client.set_registered_model_alias(
+    name=model_name,
+    alias="champion",
+    version=model_version.version
+)
+```
+
+After this runs successfully, the MLflow UI will show a registered model named `spotify-genre-classifier` with version 1 tagged `@champion`. Any subsequent run of `dvc repro` that produces a better model will bump the alias to the new version automatically.
+
+## Loading the Champion in Docker
+
+The Dockerfile resolves the `@champion` alias at **build time** using the `mlflow models download` command. This bakes the model into the image so the container needs no network access to MLflow at runtime.
+
+```bash
+mlflow models download -m "models:/spotify-genre-classifier@champion"
+```
+
+Inside the Dockerfile this is wired up as a build argument and a `RUN` instruction:
+
+```dockerfile
+ARG MLFLOW_TRACKING_URI=http://localhost:5000
+ENV MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+
+RUN mlflow models download \
+      -m "models:/spotify-genre-classifier@champion" \
+      -d ./models
+```
+
+To override the tracking URI when building in a CI environment or against a remote MLflow server:
+
+```bash
+docker build \
+  --build-arg MLFLOW_TRACKING_URI=http://mlflow-host:5000 \
+  -t spotify-api:latest .
+```
+
+<Tip>
+  Open the MLflow UI at [http://localhost:5000](http://localhost:5000) after running `dvc repro` to verify your runs. Navigate to **Models → spotify-genre-classifier** and confirm that the `@champion` alias appears next to the version you expect. If the alias is missing, the Docker build will fail with a "Model not found" error.
+</Tip>

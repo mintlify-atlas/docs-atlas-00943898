@@ -1,0 +1,176 @@
+---
+title: "REST API Reference: GET /health and POST /predict"
+sidebarTitle: "API Reference"
+description: "Full reference for the Spotify Genre Classifier API — SpotifyFeatures request schema, PredictionResponse schema, /health endpoint, and /predict endpoint with curl examples."
+---
+
+The FastAPI application exposes two endpoints on port 8000. The `/health` endpoint provides a simple liveness signal for load balancers and CI pipelines, while the `/predict` endpoint accepts the full set of Spotify audio features and returns a genre classification with a model confidence score. All request bodies are validated by Pydantic before inference runs — malformed or incomplete payloads are rejected automatically with HTTP 422.
+
+## SpotifyFeatures Request Schema
+
+Every `POST /predict` call must include a JSON body that matches the `SpotifyFeatures` Pydantic model. All 12 fields are required; omitting any field or passing the wrong type returns HTTP 422.
+
+<ParamField body="danceability" type="float" required>
+  How suitable a track is for dancing. Range: 0.0–1.0.
+</ParamField>
+
+<ParamField body="energy" type="float" required>
+  Perceptual measure of intensity and activity. Range: 0.0–1.0.
+</ParamField>
+
+<ParamField body="key" type="int" required>
+  The key the track is in, mapped to standard Pitch Class notation (e.g. 0 = C, 1 = C♯/D♭). Range: 0–11.
+</ParamField>
+
+<ParamField body="loudness" type="float" required>
+  Overall loudness of a track in decibels (dB). Typical range: −60.0–0.0.
+</ParamField>
+
+<ParamField body="mode" type="int" required>
+  Modality of the track. 1 = major, 0 = minor.
+</ParamField>
+
+<ParamField body="speechiness" type="float" required>
+  Presence of spoken words in a track. Range: 0.0–1.0. Values above 0.66 indicate tracks made entirely of spoken words.
+</ParamField>
+
+<ParamField body="acousticness" type="float" required>
+  Confidence measure of whether the track is acoustic. Range: 0.0–1.0.
+</ParamField>
+
+<ParamField body="instrumentalness" type="float" required>
+  Predicts whether a track contains no vocals. Range: 0.0–1.0. Values above 0.5 represent instrumental tracks.
+</ParamField>
+
+<ParamField body="liveness" type="float" required>
+  Detects the presence of an audience in the recording. Range: 0.0–1.0. Values above 0.8 indicate a live performance.
+</ParamField>
+
+<ParamField body="valence" type="float" required>
+  Musical positiveness conveyed by a track. Range: 0.0–1.0. High valence sounds more positive (happy, cheerful); low valence sounds more negative (sad, angry).
+</ParamField>
+
+<ParamField body="tempo" type="float" required>
+  Overall estimated tempo of the track in beats per minute (BPM).
+</ParamField>
+
+<ParamField body="duration_ms" type="int" required>
+  Duration of the track in milliseconds.
+</ParamField>
+
+---
+
+## GET /health
+
+A lightweight liveness probe. Use this endpoint to verify the API process is up before sending prediction traffic.
+
+| Property | Value |
+|---|---|
+| **Method** | `GET` |
+| **Path** | `/health` |
+| **Auth** | None |
+| **Response** | `{"status": "healthy"}` |
+| **Status** | HTTP 200 |
+
+```bash
+curl http://localhost:8000/health
+# {"status": "healthy"}
+```
+
+---
+
+## POST /predict
+
+Accepts a full `SpotifyFeatures` payload, runs inference using the baked-in `@champion` model, and returns the predicted genre and confidence score.
+
+| Property | Value |
+|---|---|
+| **Method** | `POST` |
+| **Path** | `/predict` |
+| **Content-Type** | `application/json` |
+| **Request body** | `SpotifyFeatures` (all 12 fields required) |
+| **Response model** | `PredictionResponse` |
+| **Success status** | HTTP 200 |
+
+### Request Example
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "danceability": 0.7,
+    "energy": 0.8,
+    "key": 5,
+    "loudness": -5.0,
+    "mode": 1,
+    "speechiness": 0.05,
+    "acousticness": 0.1,
+    "instrumentalness": 0.0,
+    "liveness": 0.2,
+    "valence": 0.6,
+    "tempo": 120.0,
+    "duration_ms": 240000
+  }'
+```
+
+### Response Example
+
+```json
+{"genre": "Pop", "confidence": 0.85}
+```
+
+### PredictionResponse Fields
+
+<ResponseField name="genre" type="string">
+  Predicted genre name. One of: Rock, Pop, Electronic, Folk, Country, Hip-Hop, R&B, Jazz, Blues, Classical.
+</ResponseField>
+
+<ResponseField name="confidence" type="float">
+  Model confidence score for the prediction (0.0–1.0). Based on `predict_proba` max value.
+</ResponseField>
+
+---
+
+## Request Logging Middleware
+
+Every `POST /predict` request is intercepted by an HTTP middleware that appends a JSON line to `logs/api_requests.jsonl` before forwarding the request to the endpoint. The `logs/` directory is created automatically if it does not exist.
+
+Each line is a self-contained JSON object containing all 12 audio feature fields plus a `timestamp` field in ISO 8601 format:
+
+```json
+{"danceability": 0.7, "energy": 0.8, "key": 5, "loudness": -5.0, "mode": 1, "speechiness": 0.05, "acousticness": 0.1, "instrumentalness": 0.0, "liveness": 0.2, "valence": 0.6, "tempo": 120.0, "duration_ms": 240000, "timestamp": "2024-01-15T10:23:45.123456"}
+```
+
+<Info>
+  The `logs/api_requests.jsonl` file is the data source for the drift monitoring pipeline when running in **online mode**. Each prediction appended here is consumed by the monitoring component to detect distribution shift between live traffic and the training baseline.
+</Info>
+
+The middleware reconstructs the request body after reading it so the `/predict` endpoint can still parse it correctly — a necessary step because HTTP request bodies are single-use streams.
+
+---
+
+## Error Handling
+
+| Status Code | Condition |
+|---|---|
+| `200 OK` | Prediction completed successfully. Response body contains `genre` and `confidence`. |
+| `422 Unprocessable Entity` | Validation error — one or more required fields are missing, have the wrong type, or the body is not valid JSON. Response body contains Pydantic's detailed validation error. |
+| `500 Internal Server Error` | Prediction failed due to a model or runtime error. The exception is logged server-side; the response body contains `{"detail": "Prediction failed"}`. |
+
+---
+
+## Running Tests
+
+The test suite lives in `model_serving/tests/` and uses `pytest` with FastAPI's built-in `TestClient`:
+
+```bash
+pytest model_serving/tests/
+```
+
+The suite contains three tests:
+
+| Test | What It Covers |
+|---|---|
+| `test_health_check` | Calls `GET /health` and asserts HTTP 200 with body `{"status": "healthy"}`. |
+| `test_predict_endpoint_valid_payload` | Posts a complete 12-field payload to `POST /predict`, asserts HTTP 200, and verifies both `genre` and `confidence` keys are present in the response. |
+| `test_predict_endpoint_invalid_payload` | Posts a payload with only `danceability` (11 required fields missing), asserts HTTP 422 to confirm Pydantic validation is active. |

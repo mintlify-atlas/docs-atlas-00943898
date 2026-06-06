@@ -1,0 +1,112 @@
+---
+title: "train.py: Multi-Model Training with MLflow Experiment Tracking"
+sidebarTitle: "Train Stage"
+description: "train.py loads data/train.csv, encodes genre labels, trains Logistic Regression and XGBoost classifiers, and logs parameters, metrics, and model artifacts to MLflow."
+---
+
+`train.py` is the heart of the ML pipeline. It reads the temporal training split produced by `process.py`, encodes genre labels, scales features, and trains two classifiers — Logistic Regression and XGBoost — capturing every run in MLflow so you can compare hyperparameter experiments side-by-side. The script is an intentionally incomplete student skeleton: the scaffold handles data loading, feature selection commentary, and the training loop pseudocode; students fill in the `TODO` blocks to wire it all together.
+
+## Function Signature
+
+```python
+def train(data_path: str, params: dict)
+```
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `data_path` | `str` | Path to the training CSV (`data/train.csv`) produced by `process.py` |
+| `params` | `dict` | Parsed contents of `params.yaml`, including `train` hyperparameter blocks |
+
+## Implementation Steps
+
+<Steps>
+  <Step title="Load training data">
+    Read `data/train.csv` into a pandas DataFrame using `pd.read_csv(data_path)`. Log the resulting shape so you can sanity-check the split size.
+  </Step>
+  <Step title="Separate features from target">
+    Drop the `genre` and `year` columns from the DataFrame to form the feature matrix `X`. The target vector `y` is the `genre` column. Use `errors='ignore'` on the drop in case a column is absent.
+
+    ```python
+    X = df.drop(["genre", "year"], axis=1, errors='ignore')
+    y = df["genre"]
+    ```
+  </Step>
+  <Step title="Encode genre labels">
+    The dataset contains 10 distinct genre classes that must be converted to integers (0–9) before passing them to scikit-learn models. Use `LabelEncoder` from `sklearn.preprocessing`:
+
+    ```python
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+    ```
+  </Step>
+  <Step title="Scale features">
+    Logistic Regression is sensitive to feature scale; apply `StandardScaler` to produce `X_scaled`. XGBoost handles feature scaling internally, so use the original `X` with that model.
+
+    ```python
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    ```
+  </Step>
+  <Step title="Train each model with MLflow logging">
+    Iterate over each model configuration in `params['train']`. For each model, open an MLflow run, log its hyperparameters, fit the model, calculate accuracy, and log the trained artifact. See the training loop pseudocode in the source file for the full pattern.
+  </Step>
+</Steps>
+
+## Hyperparameters
+
+All hyperparameters are read from `params.yaml` at runtime. Changing a value there and re-running `dvc repro` will trigger a new set of MLflow runs automatically.
+
+| Model | Parameter | Default |
+|-------|-----------|---------|
+| `logistic_regression` | `C` | `1.0` |
+| `logistic_regression` | `max_iter` | `1000` |
+| `xgboost` | `max_depth` | `6` |
+| `xgboost` | `learning_rate` | `0.1` |
+| `xgboost` | `n_estimators` | `100` |
+
+## MLflow Logging
+
+Each model type produces one MLflow run. The following is logged per run:
+
+| Item | MLflow call | Value |
+|------|-------------|-------|
+| Hyperparameters | `mlflow.log_params(model_params)` | All key/value pairs from the model's `params.yaml` block |
+| Accuracy | `mlflow.log_metric("accuracy", accuracy)` | Training-set accuracy |
+| Model artifact (LR) | `mlflow.sklearn.log_model(model, artifact_path="model")` | Serialised scikit-learn pipeline |
+| Model artifact (XGB) | `mlflow.xgboost.log_model(model, artifact_path="model")` | Serialised XGBoost booster |
+| Run name | `mlflow.start_run(run_name=model_name)` | `"logistic_regression"` or `"xgboost"` |
+
+### Key Implementation Notes
+
+- Use `X_scaled` when fitting `LogisticRegression`; use raw `X` when fitting `xgb.XGBClassifier`.
+- The `artifact_path` **must** be `"model"` for both log calls. `evaluate.py` constructs the model URI as `runs:/<run_id>/model`, so any other path will break champion registration.
+- Use `mlflow.sklearn.log_model` for Logistic Regression and `mlflow.xgboost.log_model` for XGBoost to preserve the correct model flavour in the registry.
+
+## DVC Stage
+
+```yaml
+train:
+  cmd: python src/train.py --data_path data/train.csv --params_path params.yaml
+  deps:
+    - data/train.csv
+    - src/train.py
+  params:
+    - train:
+  outs:
+    - models/:
+        cache: false
+```
+
+The `params: - train:` declaration tells DVC to watch the entire `train` block in `params.yaml`. Any hyperparameter change will mark this stage as stale.
+
+## CLI Usage
+
+```bash
+python src/train.py --data_path data/train.csv --params_path params.yaml
+```
+
+`--params_path` defaults to `params.yaml` if omitted.
+
+<Tip>
+  After training, run `mlflow ui` and open [http://localhost:5000](http://localhost:5000) to compare all experiment runs in a browser. You can sort by `accuracy`, diff hyperparameters between runs, and download any logged model artifact directly from the UI.
+</Tip>

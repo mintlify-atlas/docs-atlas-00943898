@@ -1,0 +1,65 @@
+---
+title: "MLOps Fundamentals: Spotify Genre Classification"
+sidebarTitle: "Introduction"
+description: "Learn what you will build in this homework: a complete MLOps pipeline covering data versioning, experiment tracking, model serving, and drift monitoring."
+---
+
+This homework is the capstone assignment for the MLOps Fundamentals and Practice course. You will build a production-ready, end-to-end MLOps pipeline that classifies Spotify songs into 10 genre categories — Rock, Pop, Electronic, Folk, Country, Hip-Hop, R&B, Jazz, Blues, and Classical — using a dataset of approximately 550,000 tracks. Along the way you will wire together four industry-standard tools — DVC, MLflow, FastAPI, and SciPy-based drift detection — into a single cohesive system that mirrors how real ML teams ship and monitor models.
+
+## What You Will Build
+
+The project is organised as a monorepo with three independently runnable subsystems, each targeting a different phase of the ML lifecycle.
+
+<CardGroup cols={2}>
+  <Card title="DVC Data Pipeline" icon="database">
+    A four-stage DVC pipeline (`load → process → train → evaluate`) that ingests the raw Kaggle CSV, performs a temporal split at year 2010, trains two model types (Logistic Regression and XGBoost), and registers the best model in the MLflow Model Registry.
+  </Card>
+  <Card title="MLflow Experiment Tracking" icon="chart-line">
+    Every training run logs hyperparameters, accuracy metrics, and model artifacts to a local MLflow tracking server. The `evaluate` stage automatically promotes the winning run to the `@champion` alias.
+  </Card>
+  <Card title="FastAPI Model Serving" icon="server">
+    A containerised FastAPI application that loads the `@champion` model at Docker build time, exposes a `POST /predict` endpoint with Pydantic-validated audio features, and streams every request to a JSONL log file for downstream drift analysis.
+  </Card>
+  <Card title="KS Drift Monitoring" icon="wave-square">
+    An offline batch script that applies the Kolmogorov–Smirnov two-sample test to compare the training-data distribution against either the held-out production simulation split or live API request logs, flagging features whose distribution has shifted significantly.
+  </Card>
+</CardGroup>
+
+## Learning Objectives
+
+By completing this homework you will be able to:
+
+- Apply **temporal data splits** to simulate realistic distribution shift between training and production environments.
+- Use **MLflow** to track experiment parameters, log evaluation metrics, register models, and manage deployment aliases.
+- Write **Pydantic v2 schemas** to validate incoming requests to a machine-learning API.
+- Package a trained ML model inside a **Docker container** so the container is fully self-contained at runtime.
+- Implement **statistical drift detection** using the Kolmogorov–Smirnov test on both batch and online data sources.
+
+## Grading at a Glance
+
+The assignment is worth **20 points** in total, split across five graded areas.
+
+<CardGroup cols={2}>
+  <Card title="Data Pipeline" icon="pipe-section">
+    **6 points** — Temporal split, MLflow-logged training runs for both model types, and champion model registration via the MLflow client API.
+  </Card>
+  <Card title="Model Serving" icon="rocket">
+    **5 points** — Pydantic feature schema, `/health` and `/predict` endpoints, JSONL request logging middleware, and a working Dockerfile that downloads the `@champion` model at build time.
+  </Card>
+  <Card title="Drift Monitoring" icon="chart-bar">
+    **3 points** — KS test loop over all audio features in both batch mode (train vs. prod_sim) and online mode (train vs. API logs), with JSON drift reports as output.
+  </Card>
+  <Card title="Testing & CI/CD" icon="check-circle">
+    **4 points** — Unit tests for the data pipeline, integration tests for the API, `flake8` linting, and a green GitHub Actions run on the Pull Request.
+  </Card>
+  <Card title="Documentation" icon="book-open">
+    **2 points** — All TODO comments resolved, code clearly commented, and a complete submission checklist in the PR description.
+  </Card>
+  <Card title="Total" icon="star">
+    **20 points** — A passing CI run on your Pull Request is worth 1 point on its own — push early and push often.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Ready to submit? See [How to Submit](/submission/how-to-submit) for the exact fork → branch → PR steps and the full submission checklist.
+</Tip>
