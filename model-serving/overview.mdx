@@ -1,7 +1,7 @@
 ---
 title: "Model Serving: FastAPI Genre Classifier with Request Logging"
 sidebarTitle: "Overview"
-description: "Overview of the FastAPI model serving module — a containerized REST API that loads the MLflow champion model and classifies Spotify tracks by genre with confidence scores."
+description: "FastAPI model serving module — Dockerized REST API for Spotify genre classification with the MLflow champion model and JSONL prediction request logging."
 ---
 
 The `model_serving` module is a production-ready FastAPI application packaged in Docker that serves the MLflow champion model for Spotify genre prediction. It accepts Spotify audio features over HTTP, runs inference using the registered `@champion` model, and returns the predicted genre alongside a confidence score. Request logging middleware captures every prediction call to a local JSONL file, feeding downstream drift monitoring without any changes to the endpoint logic.
@@ -18,7 +18,7 @@ The serving stack is composed of four tightly integrated pieces:
     - **POST `/predict`** — accepts a `SpotifyFeatures` JSON body, runs `predict_genre()`, and returns a `PredictionResponse` with the predicted `genre` and `confidence` score.
   </Card>
   <Card title="Pydantic Request Validation" icon="shield-check">
-    The `SpotifyFeatures` Pydantic model enforces strict type validation on the 12 audio feature fields before any inference code runs. If a required field is missing or has the wrong type, FastAPI automatically returns HTTP 422 — no custom error handling needed.
+    The `SpotifyFeatures` Pydantic model must be completed by students to enforce strict type validation on the 12 audio feature fields before any inference code runs. If a required field is missing or has the wrong type, FastAPI automatically returns HTTP 422 — no custom error handling needed.
   </Card>
   <Card title="Request Logging Middleware" icon="file-lines">
     An HTTP middleware function intercepts every `POST /predict` call, appends a JSON line (all 12 feature fields plus a `timestamp`) to `logs/api_requests.jsonl`, then reconstructs the request body so the endpoint still reads it correctly. This file is consumed by the drift monitoring pipeline's online mode.
@@ -27,6 +27,18 @@ The serving stack is composed of four tightly integrated pieces:
     The `Dockerfile` builds on `python:3.11-slim`. When fully implemented, it downloads the `@champion` model from MLflow at **build time** and bakes it into the image — the running container needs no live MLflow server to serve predictions.
   </Card>
 </CardGroup>
+
+## Student TODOs
+
+Two critical pieces in `app/main.py` are left as TODOs for students to implement:
+
+1. **`SpotifyFeatures` Pydantic model** — The class body is currently `pass`. Students must add all 12 audio feature fields with the correct Python types so that FastAPI can validate incoming request payloads.
+2. **`log_requests` middleware** — The middleware skeleton calls `call_next` immediately without any logging logic. Students must implement the body-reading, JSON-parsing, timestamp-stamping, and JSONL-appending steps described in the inline comments.
+3. **`GET /health` endpoint** — The route is not yet defined. Students must add it to return `{"status": "healthy"}` with HTTP 200.
+
+<Warning>
+  Until `SpotifyFeatures` is implemented with its 12 required fields, the `POST /predict` endpoint will accept empty payloads and the test `test_predict_endpoint_invalid_payload` will fail (Pydantic has nothing to validate against). Complete the model before running the test suite.
+</Warning>
 
 ## Dependencies
 

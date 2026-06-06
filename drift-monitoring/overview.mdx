@@ -1,7 +1,7 @@
 ---
-title: "Drift Monitoring: Detecting Distribution Shift in Spotify Features"
+title: "Drift Monitoring: Distribution Shift in Spotify Features"
 sidebarTitle: "Overview"
-description: "Overview of the drift monitoring module — running Kolmogorov-Smirnov tests across 12 Spotify audio features in batch mode (CSV vs CSV) and online mode (CSV vs API logs)."
+description: "Detect distribution shift in Spotify audio features using KS tests across batch CSV splits and live API logs, then inspect the drift_report.json output."
 ---
 
 The `drift_monitoring` module detects whether the distribution of Spotify audio features has shifted between the training era (≤2010) and production (>2010 or live API traffic). By comparing the statistical properties of each audio feature between a known baseline and a production dataset, it surfaces when the model may be receiving inputs that look meaningfully different from what it was trained on — a leading signal that prediction quality has likely degraded.
@@ -54,16 +54,16 @@ Every feature present in both the training and production DataFrames is tested. 
 
 ## Drift Report Output
 
-Both modes write their results to `drift_report.json`. The report structure is:
+Both modes write their results to `drift_report.json`. The values below are illustrative — your actual output will vary based on sample sizes and the features that drift in your dataset.
 
 ```json
 {
   "timestamp": "2024-01-15T10:00:00",
   "train_samples": 150000,
   "production_samples": 400000,
-  "features_with_drift": 8,
+  "features_with_drift": 3,
   "drifted_features": ["danceability", "energy", "tempo"],
-  "drift_percentage": 66.7,
+  "drift_percentage": 25.0,
   "status": "DRIFT_DETECTED",
   "details": {
     "danceability": {

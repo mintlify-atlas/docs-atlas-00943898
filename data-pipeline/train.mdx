@@ -1,7 +1,7 @@
 ---
-title: "train.py: Multi-Model Training with MLflow Experiment Tracking"
+title: "train.py: Multi-Model Training with MLflow Tracking"
 sidebarTitle: "Train Stage"
-description: "train.py loads data/train.csv, encodes genre labels, trains Logistic Regression and XGBoost classifiers, and logs parameters, metrics, and model artifacts to MLflow."
+description: "Student-implemented skeleton: load train.csv, encode genres, fit Logistic Regression and XGBoost, log parameters, metrics, and model artifacts to MLflow."
 ---
 
 `train.py` is the heart of the ML pipeline. It reads the temporal training split produced by `process.py`, encodes genre labels, scales features, and trains two classifiers — Logistic Regression and XGBoost — capturing every run in MLflow so you can compare hyperparameter experiments side-by-side. The script is an intentionally incomplete student skeleton: the scaffold handles data loading, feature selection commentary, and the training loop pseudocode; students fill in the `TODO` blocks to wire it all together.

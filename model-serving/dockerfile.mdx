@@ -1,7 +1,7 @@
 ---
 title: "Dockerfile: Building a Self-Contained Inference Container"
 sidebarTitle: "Dockerfile"
-description: "Learn how to extend the model_serving Dockerfile to download the MLflow @champion model at build time, producing a container that runs without a live MLflow server."
+description: "Extend the Dockerfile skeleton to bake the MLflow champion model into the image at build time so the inference container needs no MLflow server at runtime."
 ---
 
 The `model_serving` Dockerfile produces a self-contained container image that includes the champion model artifact baked directly into the image layers — no MLflow server is required at runtime. The build-time download strategy means the resulting image can be shipped to any environment and will serve predictions immediately, without any dependency on the MLflow tracking server that registered the model.

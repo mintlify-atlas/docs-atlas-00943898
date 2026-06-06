@@ -1,7 +1,7 @@
 ---
-title: "REST API Reference: GET /health and POST /predict"
+title: "REST API Reference: /health and /predict Endpoints"
 sidebarTitle: "API Reference"
-description: "Full reference for the Spotify Genre Classifier API — SpotifyFeatures request schema, PredictionResponse schema, /health endpoint, and /predict endpoint with curl examples."
+description: "Complete reference for the Spotify Genre Classifier API: SpotifyFeatures (12 fields, student TODO), PredictionResponse, endpoint specs, and curl examples."
 ---
 
 The FastAPI application exposes two endpoints on port 8000. The `/health` endpoint provides a simple liveness signal for load balancers and CI pipelines, while the `/predict` endpoint accepts the full set of Spotify audio features and returns a genre classification with a model confidence score. All request bodies are validated by Pydantic before inference runs — malformed or incomplete payloads are rejected automatically with HTTP 422.
@@ -9,6 +9,27 @@ The FastAPI application exposes two endpoints on port 8000. The `/health` endpoi
 ## SpotifyFeatures Request Schema
 
 Every `POST /predict` call must include a JSON body that matches the `SpotifyFeatures` Pydantic model. All 12 fields are required; omitting any field or passing the wrong type returns HTTP 422.
+
+<Warning>
+  **Student TODO:** The `SpotifyFeatures` class in `app/main.py` is currently a stub (`pass`). Students must add the 12 fields below with the correct types before the validation and the `test_predict_endpoint_invalid_payload` test will work correctly.
+</Warning>
+
+```python
+# TODO: Students must implement this class body in app/main.py
+class SpotifyFeatures(BaseModel):
+    danceability: float
+    energy: float
+    key: int
+    loudness: float
+    mode: int
+    speechiness: float
+    acousticness: float
+    instrumentalness: float
+    liveness: float
+    valence: float
+    tempo: float
+    duration_ms: int
+```
 
 <ParamField body="danceability" type="float" required>
   How suitable a track is for dancing. Range: 0.0–1.0.
@@ -64,6 +85,10 @@ Every `POST /predict` call must include a JSON body that matches the `SpotifyFea
 
 A lightweight liveness probe. Use this endpoint to verify the API process is up before sending prediction traffic.
 
+<Note>
+  **Student TODO:** The `GET /health` route is not yet implemented in `app/main.py`. Students must add the endpoint decorated with `@app.get("/health")` that returns `{"status": "healthy"}` with HTTP 200.
+</Note>
+
 | Property | Value |
 |---|---|
 | **Method** | `GET` |
@@ -81,7 +106,7 @@ curl http://localhost:8000/health
 
 ## POST /predict
 
-Accepts a full `SpotifyFeatures` payload, runs inference using the baked-in `@champion` model, and returns the predicted genre and confidence score.
+Accepts a full `SpotifyFeatures` payload, runs inference using the baked-in `@champion` model via `predict_genre()`, and returns the predicted genre and confidence score.
 
 | Property | Value |
 |---|---|
@@ -121,12 +146,20 @@ curl -X POST http://localhost:8000/predict \
 
 ### PredictionResponse Fields
 
+`PredictionResponse` is defined in `app/main.py` as a complete Pydantic model (no student changes needed):
+
+```python
+class PredictionResponse(BaseModel):
+    genre: str
+    confidence: float = 0.0
+```
+
 <ResponseField name="genre" type="string">
-  Predicted genre name. One of: Rock, Pop, Electronic, Folk, Country, Hip-Hop, R&B, Jazz, Blues, Classical.
+  Predicted genre name returned by the model (e.g. "Pop", "Rock", "Electronic").
 </ResponseField>
 
 <ResponseField name="confidence" type="float">
-  Model confidence score for the prediction (0.0–1.0). Based on `predict_proba` max value.
+  Model confidence score for the prediction (0.0–1.0), defaulting to `0.0`. When fully implemented, this is the max value from `model.predict_proba()`.
 </ResponseField>
 
 ---
@@ -134,6 +167,10 @@ curl -X POST http://localhost:8000/predict \
 ## Request Logging Middleware
 
 Every `POST /predict` request is intercepted by an HTTP middleware that appends a JSON line to `logs/api_requests.jsonl` before forwarding the request to the endpoint. The `logs/` directory is created automatically if it does not exist.
+
+<Note>
+  **Student TODO:** The `log_requests` middleware in `app/main.py` is currently a skeleton that calls `call_next` immediately without logging. Students must implement the body-reading, JSON-parsing, timestamp-stamping, and JSONL-appending steps described in the inline comments.
+</Note>
 
 Each line is a self-contained JSON object containing all 12 audio feature fields plus a `timestamp` field in ISO 8601 format:
 

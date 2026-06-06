@@ -1,7 +1,7 @@
 ---
 title: "Project Structure: Monorepo Layout and Component Roles"
 sidebarTitle: "Project Structure"
-description: "Understand how the mlops-fundamentals-homework monorepo is organized across three independent subsystems: data pipeline, model serving, and drift monitoring."
+description: "Explore the mlops-fundamentals-homework monorepo layout across three subsystems: data pipeline, model serving, and drift monitoring."
 ---
 
 The homework repository is a **monorepo** containing three independently runnable subsystems that share no Python packages at runtime but are linked by data artefacts and the MLflow Model Registry. Understanding the layout before you start coding will save you from path errors, missing-file surprises, and confusing CI failures. Each top-level directory has its own `requirements.txt`, its own test suite, and its own responsibility in the ML lifecycle.
@@ -86,7 +86,7 @@ Data moves through the system in a linear chain. Each step produces an artefact 
   <Card title="Drift Monitoring" icon="chart-bar" href="/drift-monitoring/overview">
     Offline KS-test script that compares training-data distributions to either the held-out production split or live API logs, flagging features whose distribution has shifted.
   </Card>
-  <Card title="CI/CD" icon="check-circle">
+  <Card title="CI/CD" icon="check-circle" href="/cicd/github-actions">
     GitHub Actions workflow that lints with `flake8` and runs both test suites automatically on every pull request push.
   </Card>
 </CardGroup>

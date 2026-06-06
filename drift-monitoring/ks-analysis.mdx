@@ -1,7 +1,7 @@
 ---
 title: "KS Test Implementation: run_ks_analysis and analyze_drift.py"
 sidebarTitle: "KS Analysis"
-description: "Implement the run_ks_analysis function using scipy.stats.ks_2samp to test each audio feature for distribution shift and produce a structured drift_report.json."
+description: "Implement run_ks_analysis using scipy.stats.ks_2samp to test each audio feature for distribution shift and write the results to drift_report.json."
 ---
 
 The Kolmogorov-Smirnov (KS) two-sample test measures whether two samples come from the same underlying probability distribution. It does this by computing the maximum absolute difference between the two empirical cumulative distribution functions. A p-value below 0.05 indicates statistically significant drift — the distributions are unlikely to be the same, and the model is receiving inputs that differ from its training distribution.

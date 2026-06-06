@@ -1,7 +1,7 @@
 ---
 title: "process.py: Temporal Train/Prod Split at the 2010 Boundary"
 sidebarTitle: "Process Stage"
-description: "The process stage splits data/raw.csv into train.csv (year ≤ 2010) and prod_sim.csv (year > 2010), creating the distribution shift that drift monitoring will detect."
+description: "Splits data/raw.csv into train.csv (year <= 2010) and prod_sim.csv (year > 2010) to create the distribution shift that drift monitoring will detect."
 ---
 
 `process.py` splits the raw Spotify dataset into two temporally-separated subsets using the song release year as the boundary. Tracks released on or before 2010 — the pre-streaming, CD/iTunes era — go into `data/train.csv`. Tracks released after 2010 — the Spotify streaming era — go into `data/prod_sim.csv`. This intentional distribution shift across the 2010 boundary is the signal that the drift monitoring component will later detect: audio feature distributions changed measurably when streaming economics reshaped what music gets made and released.

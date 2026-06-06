@@ -1,7 +1,7 @@
 ---
 title: "evaluate.py: Select and Register the Champion Model"
 sidebarTitle: "Evaluate Stage"
-description: "evaluate.py queries MLflow for the highest-accuracy run, registers it in the Model Registry as spotify-genre-classifier, and assigns the @champion alias for Docker deployment."
+description: "Queries MLflow for the highest-accuracy run, then registers it as spotify-genre-classifier with the @champion alias so the Dockerfile can pull it by name."
 ---
 
 `evaluate.py` closes the training loop by promoting the single best-performing model to production. It queries every MLflow run logged by `train.py`, picks the one with the highest `accuracy` metric, registers that run's artifact under the name `spotify-genre-classifier` in the MLflow Model Registry, and stamps it with the `@champion` alias. The Dockerfile uses this alias to pull the correct model at container build time without ever hard-coding a version number.
@@ -43,21 +43,25 @@ def evaluate_and_register(train_data_path: str = "data/train.csv")
   <Step title="Pick the best run">
     Select `runs[0]` as `best_run`. If no runs exist, the function logs an error and returns early rather than raising an exception.
   </Step>
-  <Step title="Register the model version">
-    Call `client.create_model_version()` to attach the run's `model` artifact to a named entry in the Model Registry:
+  <Step title="Register the model version (TODO)">
+    This step is a student exercise. Call `client.create_model_version()` to attach the run's `model` artifact to a named entry in the Model Registry. The scaffolded variables `model_name`, `model_uri`, and `best_run` are already available:
 
     ```python
+    # TODO: implement in evaluate.py
     model_version = client.create_model_version(
         name=model_name,
         source=model_uri,
         run_id=best_run.info.run_id
     )
     ```
+
+    `client.create_model_version()` returns a `ModelVersion` object whose `.version` attribute is needed in the next step.
   </Step>
-  <Step title="Assign the @champion alias">
-    Tag the new version as the champion so downstream consumers can reference it by alias rather than version number:
+  <Step title="Assign the @champion alias (TODO)">
+    This step is a student exercise. Call `client.set_registered_model_alias()` to tag the new version so downstream consumers (the Dockerfile) can reference it by alias rather than version number:
 
     ```python
+    # TODO: implement in evaluate.py
     client.set_registered_model_alias(
         name=model_name,
         alias="champion",

@@ -1,7 +1,7 @@
 ---
-title: "load.py: Ingest Raw Spotify Songs CSV"
+title: "load.py: Ingest the Raw Kaggle Spotify Songs Dataset"
 sidebarTitle: "Load Stage"
-description: "The load stage reads songs.csv from Kaggle and writes it as data/raw.csv, preserving all columns. Column filtering and splitting happen downstream in process.py."
+description: "The load stage reads songs.csv from Kaggle and writes data/raw.csv with every column intact. All filtering and splitting happen downstream in process.py."
 ---
 
 `load.py` has a single, deliberate responsibility: read the raw Kaggle CSV from disk and save it unchanged as `data/raw.csv`. No columns are dropped, no rows are filtered, and no transformations are applied at this stage. Keeping the load step pure makes it easy to swap the data source without touching any downstream logic — all filtering and temporal splitting are handled exclusively by `process.py`.

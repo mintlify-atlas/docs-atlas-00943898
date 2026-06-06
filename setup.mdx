@@ -1,7 +1,7 @@
 ---
-title: "Set Up the MLOps Homework Environment"
+title: "Environment Setup for the MLOps Fundamentals Homework"
 sidebarTitle: "Setup"
-description: "Install Python dependencies, configure environment variables, download the 550k Spotify Songs dataset from Kaggle, and verify DVC data integrity before running the pipeline."
+description: "Install Python dependencies, configure environment variables, download the Spotify dataset, and verify DVC data integrity before running the pipeline."
 ---
 
 This page walks you through everything you need to do before running a single line of the pipeline. You will install the three independent requirements files, copy and populate the `.env` configuration, start the MLflow tracking server, download the Kaggle dataset, and verify that DVC sees the correct file hash. Complete each step in order — every subsequent stage in the pipeline depends on the outputs produced here.
@@ -136,7 +136,7 @@ Make sure the following are available on your machine before you begin.
     ```
 
     <Note>
-      The expected MD5 hash for the correct dataset file is **`0e71e2c46244acac485bd8c245aa6e56`**. After running `dvc repro`, check that the hash recorded in `dvc.lock` matches this value. A mismatch means you have a different version of the dataset and the grader's hash check will fail.
+      After running `dvc repro`, the hash for `songs.csv` is recorded in `dvc.lock`. If `dvc status songs.csv.dvc` shows a mismatch, you have a different version of the dataset and the grader's hash check will fail — re-download from the Kaggle link above.
     </Note>
 
     Once the file is verified, run the full pipeline:

@@ -1,10 +1,10 @@
 ---
 title: "Data Pipeline: DVC-Orchestrated ML Training Pipeline"
 sidebarTitle: "Overview"
-description: "Overview of the four-stage DVC pipeline that loads, processes, trains, and evaluates the Spotify genre classifier — with commands to run, visualize, and debug."
+description: "Four-stage DVC pipeline that loads, processes, trains, and evaluates the Spotify genre classifier — with commands to run, visualize, and reproduce."
 ---
 
-The data pipeline is a four-stage, DVC-orchestrated workflow that takes a raw Kaggle Spotify CSV all the way through to a registered champion model in MLflow. Each stage has a single responsibility and hands its output to the next: **load** ingests the raw file, **process** splits it into temporal train/prod sets, **train** fits Logistic Regression and XGBoost classifiers with full MLflow tracking, and **evaluate** picks the winner and registers it in the Model Registry.
+The data pipeline is a four-stage, DVC-orchestrated workflow that takes a raw Kaggle Spotify CSV all the way through to a registered champion model in MLflow. Each stage has a single responsibility and hands its output to the next: **load** ingests the raw file, **process** splits it into temporal train/prod sets, **train** fits Logistic Regression and XGBoost classifiers with MLflow tracking (student-implemented), and **evaluate** picks the winner and registers it in the Model Registry (student-implemented).
 
 ## Pipeline Stages
 

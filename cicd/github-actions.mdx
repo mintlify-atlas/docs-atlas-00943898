@@ -1,14 +1,14 @@
 ---
-title: "GitHub Actions CI: Automated Linting and Testing on Pull Requests"
+title: "GitHub Actions CI: Linting and Testing on Pull Requests"
 sidebarTitle: "GitHub Actions"
-description: "How the CI pipeline triggers on pull requests, installs all dependencies, runs flake8 linting, and executes pytest on both the data pipeline and model serving test suites."
+description: "Covers the ci.yml workflow that runs on pull requests to main — installs requirements, lints with flake8, and executes pytest across both test suites."
 ---
 
 The `.github/workflows/ci.yml` pipeline runs automatically on every push to a pull request targeting the `main` branch. It validates your implementation against the full test suite and linter before any review happens — a green checkmark is worth **1 grading point** and signals that your code satisfies both style and correctness requirements.
 
 ## Pipeline Overview
 
-The pipeline defines a single job, `test`, with four sequential steps:
+The pipeline defines a single job, `test`, with five sequential steps:
 
 | Step | Tool | What it does |
 |---|---|---|
@@ -75,7 +75,7 @@ jobs:
     ```bash
     pytest data_pipeline/tests model_serving/tests
     ```
-    All 6 tests must pass before you push.
+    All 9 tests must pass before you push.
   </Step>
   <Step title="Run flake8 locally">
     ```bash

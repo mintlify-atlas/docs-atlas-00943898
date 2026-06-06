@@ -1,7 +1,7 @@
 ---
-title: "MLOps Fundamentals Homework"
+title: "MLOps Fundamentals Homework: Spotify Genre Classification"
 sidebarTitle: "Home"
-description: "Build a production-ready end-to-end MLOps pipeline for Spotify genre classification — data versioning, experiment tracking, model serving, and drift monitoring."
+description: "Build a production MLOps pipeline for Spotify genre classification: DVC data versioning, MLflow experiment tracking, FastAPI serving, and drift monitoring."
 ---
 
 The MLOps Fundamentals Homework takes you from raw Kaggle data to a fully deployed, monitored machine learning system. Working through four stages, you will implement a DVC-orchestrated training pipeline, track experiments with MLflow, serve predictions through a FastAPI application packaged in Docker, and detect data drift using Kolmogorov-Smirnov tests — exactly as you would in a real production MLOps role.
@@ -33,8 +33,8 @@ The MLOps Fundamentals Homework takes you from raw Kaggle data to a fully deploy
   <Step title="Drift Monitoring (3 pts)">
     Run **Kolmogorov-Smirnov tests** across all 12 audio features in two modes: batch (comparing train vs. production CSV splits) and online (comparing training data against live API request logs).
   </Step>
-  <Step title="CI/CD (1 pt)">
-    Every push to your pull request triggers **GitHub Actions** — flake8 linting and pytest for both the data pipeline and model serving modules. A green checkmark is required for submission.
+  <Step title="Testing &amp; CI/CD (4 pts)">
+    Every push to your pull request triggers **GitHub Actions** — flake8 linting and pytest for both the data pipeline and model serving modules. Unit tests earn 2 pts, code quality 1 pt, and a green Actions checkmark 1 pt.
   </Step>
 </Steps>
 

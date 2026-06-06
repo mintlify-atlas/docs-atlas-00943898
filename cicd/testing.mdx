@@ -1,7 +1,7 @@
 ---
-title: "Unit Tests: Data Pipeline and Model Serving"
+title: "Unit Tests: Data Pipeline and Model Serving Test Suites"
 sidebarTitle: "Testing"
-description: "Overview of the pytest test suites for the data pipeline and model serving modules — what each test covers, how to run them, and what passing looks like."
+description: "Covers all nine pytest tests for the data pipeline and model serving modules — what each test validates, how to run them, and the project flake8 config."
 ---
 
 The homework includes two pytest suites — one for `data_pipeline` and one for `model_serving`. Both must pass in their entirety for a green CI checkmark on your pull request. Each suite is designed to verify a specific slice of the pipeline: data ingestion and temporal splitting in the data pipeline, and HTTP contract correctness in the model serving API.
@@ -119,7 +119,13 @@ pytest data_pipeline/tests model_serving/tests
 
 ## Code Style
 
-The project uses **flake8** for linting. The configuration in `.flake8` sets `max-line-length = 100` and extends the ignore list with `E203`. Run the linter with:
+The project uses **flake8** for linting. The `.flake8` configuration at the repository root sets:
+
+- `max-line-length = 100`
+- `extend-ignore = E203` (whitespace before `:` — suppressed for numpy/pandas slice syntax)
+- `per-file-ignores`: `model_serving/app/main.py: F401` — scaffold imports in `main.py` are provided for students to use in their TODO implementations and are therefore exempt from the unused-import rule.
+
+Run the linter with:
 
 ```bash
 flake8 .

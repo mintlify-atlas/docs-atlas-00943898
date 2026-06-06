@@ -99,5 +99,5 @@ The dataset requires a free Kaggle account and API credentials.
   dvc status songs.csv.dvc
   ```
 
-  The expected MD5 hash is `0e71e2c46244acac485bd8c245aa6e56`. If the hash in `dvc.lock` after `dvc repro` does not match, the grader's dataset-integrity check will fail.
+  Run `dvc repro` and check that `dvc.lock` records the hash of your `songs.csv`. If the hash does not match the course-provided `.dvc` file, the grader's dataset-integrity check will fail.
 </Note>
